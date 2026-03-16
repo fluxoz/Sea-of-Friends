@@ -10,6 +10,9 @@ import * as THREE from 'three'
 const WORLD_SIZE  = 5000
 const ISLAND_COUNT = 14
 
+/** Half the world extent; ships are clamped to stay inside this boundary. */
+export const WORLD_HALF = WORLD_SIZE / 2
+
 // ── Shared wave parameters ────────────────────────────────────────────────────
 // These must be kept in sync between the GLSL vertex shader and waveHeight().
 export const WAVE_PARAMS = [
@@ -56,10 +59,12 @@ const OCEAN_VERT = /* glsl */ `
     float eps = 3.0;
     float hx = singleWave(p + vec3(eps,0,0), 0.022,0.85,0.80, 1.0, 0.7)
              + singleWave(p + vec3(eps,0,0), 0.016,0.60,0.55,-0.6, 1.0)
-             + singleWave(p + vec3(eps,0,0), 0.011,1.20,0.35, 0.8,-0.5);
+             + singleWave(p + vec3(eps,0,0), 0.011,1.20,0.35, 0.8,-0.5)
+             + singleWave(p + vec3(eps,0,0), 0.034,1.50,0.20,-0.5,-0.9);
     float hz = singleWave(p + vec3(0,0,eps), 0.022,0.85,0.80, 1.0, 0.7)
              + singleWave(p + vec3(0,0,eps), 0.016,0.60,0.55,-0.6, 1.0)
-             + singleWave(p + vec3(0,0,eps), 0.011,1.20,0.35, 0.8,-0.5);
+             + singleWave(p + vec3(0,0,eps), 0.011,1.20,0.35, 0.8,-0.5)
+             + singleWave(p + vec3(0,0,eps), 0.034,1.50,0.20,-0.5,-0.9);
     vNormal = normalize(vec3(h - hx, eps, h - hz));
 
     gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
