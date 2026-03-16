@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import { defineConfig } from 'vite'
 
 export default defineConfig({
@@ -6,5 +7,17 @@ export default defineConfig({
   },
   build: {
     target: 'esnext',
+=======
+import {defineConfig} from 'vite'
+
+export default defineConfig({
+  root: '.',
+  publicDir: 'public',
+  build: {
+    outDir: 'dist',
+  },
+  server: {
+    open: false,
+>>>>>>> master
   },
 })

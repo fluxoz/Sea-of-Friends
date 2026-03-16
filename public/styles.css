@@ -1,0 +1,147 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #0a0e17;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  color: #e0e6f0;
+}
+
+canvas#game-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  position: fixed;
+  top: 0;
+  left: 0;
+}
+
+/* ---------- HUD ---------- */
+#hud {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 10;
+}
+
+#hud.visible {
+  display: block;
+}
+
+#hud-connection {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  display: flex;
+  gap: 18px;
+  font-size: 14px;
+  opacity: 0.85;
+}
+
+#hud-coords {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  font-size: 13px;
+  opacity: 0.65;
+  font-variant-numeric: tabular-nums;
+}
+
+#hud-controls {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  text-align: right;
+  font-size: 12px;
+  opacity: 0.45;
+}
+
+/* ---------- Lobby overlay ---------- */
+.overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 10, 22, 0.88);
+  backdrop-filter: blur(12px);
+  z-index: 100;
+}
+
+.overlay.hidden {
+  display: none;
+}
+
+.overlay h1 {
+  font-size: 48px;
+  margin-bottom: 8px;
+}
+
+.overlay p {
+  margin-bottom: 20px;
+  opacity: 0.7;
+}
+
+.overlay .subtle {
+  font-size: 13px;
+  opacity: 0.45;
+  margin-top: 6px;
+}
+
+#lobby-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 280px;
+}
+
+#lobby-form label {
+  font-size: 13px;
+  opacity: 0.6;
+}
+
+#lobby-form input {
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #e0e6f0;
+  font-size: 16px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+#lobby-form input:focus {
+  border-color: rgba(100, 180, 255, 0.5);
+}
+
+#lobby-form button {
+  padding: 10px 0;
+  border: none;
+  border-radius: 6px;
+  background: #2a6adb;
+  color: #fff;
+  font-size: 16px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+#lobby-form button:hover {
+  background: #3b7cf5;
+}
+
+#lobby-form button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

@@ -1,17 +1,41 @@
 {
   "name": "sea-of-friends",
   "version": "1.0.0",
+<<<<<<< HEAD
+=======
+  "description": "A sea of thieves like sandbox game that uses a DHT, P2P and NAT hole punching to connect peers directly",
+>>>>>>> master
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview"
   },
+<<<<<<< HEAD
   "dependencies": {
     "three": "^0.162.0",
     "trystero": "^0.20.0"
   },
   "devDependencies": {
     "vite": "^5.2.0"
+=======
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fluxoz/Sea-of-Friends.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/fluxoz/Sea-of-Friends/issues"
+  },
+  "homepage": "https://github.com/fluxoz/Sea-of-Friends#readme",
+  "dependencies": {
+    "three": "^0.183.2",
+    "trystero": "^0.22.0"
+  },
+  "devDependencies": {
+    "vite": "^8.0.0"
+>>>>>>> master
   }
 }

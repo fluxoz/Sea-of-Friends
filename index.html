@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+<<<<<<< HEAD
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -178,4 +179,47 @@
 
   <script type="module" src="/src/main.js"></script>
 </body>
+=======
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sea of Friends</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <canvas id="game-canvas"></canvas>
+
+    <div id="hud">
+      <div id="hud-connection">
+        <span id="hud-status">⏳ Connecting…</span>
+        <span id="hud-peers">Players: 1</span>
+      </div>
+      <div id="hud-coords"></div>
+      <div id="hud-controls">
+        <p>WASD — Move · Mouse — Look · Space — Boost</p>
+      </div>
+    </div>
+
+    <div id="lobby" class="overlay">
+      <h1>⚓ Sea of Friends</h1>
+      <p>A peer-to-peer ocean sandbox — no servers required.</p>
+      <div id="lobby-form">
+        <label for="room-input">Room code</label>
+        <input
+          id="room-input"
+          type="text"
+          placeholder="Enter a room code…"
+          maxlength="32"
+          autocomplete="off"
+        />
+        <button id="join-btn" type="button">Set Sail</button>
+      </div>
+      <p class="subtle">
+        Share the same room code with friends to join the same ocean.
+      </p>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+>>>>>>> master
 </html>
