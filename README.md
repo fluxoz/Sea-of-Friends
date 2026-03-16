@@ -40,7 +40,7 @@ npm run preview    # serve the production build
 | Mouse drag | Rotate camera |
 | Scroll | Zoom |
 | Click canvas | Lock cursor for mouse-look |
-| `T` | Open chat |
+| `Enter` | Open chat |
 | `ESC` | Close chat / release cursor |
 
 Every player automatically connects to everyone else in the same logical world (`world-1`) via the DHT.  

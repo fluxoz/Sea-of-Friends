@@ -2,11 +2,10 @@
  * game.js – Three.js scene, camera, input, game loop.
  */
 import * as THREE from 'three'
-import { Ship }        from './ship.js'
-import { World, waveHeight } from './world.js'
+import { Ship, MAX_SHIP_SPEED } from './ship.js'
+import { World, waveHeight }   from './world.js'
 
-const SEND_RATE  = 80   // ms between network position broadcasts
-const MAX_SPEED  = 13   // m/s – must match Ship constant
+const SEND_RATE = 80   // ms between network position broadcasts
 
 export class Game {
   constructor(canvas) {
@@ -326,7 +325,7 @@ export class Game {
       this.network.sendPosition(
         this.localShip.getPosition(),
         this.localShip.getRotationY(),
-        this.localShip.getNormalisedSpeed(MAX_SPEED),
+        this.localShip.getNormalisedSpeed(),
       )
     }
   }
@@ -344,7 +343,7 @@ export class Game {
     // Speed bar
     const fill = document.getElementById('speed-fill-inner')
     if (fill) {
-      fill.style.width = `${Math.max(0, this.localShip.getNormalisedSpeed(MAX_SPEED) * 100)}%`
+      fill.style.width = `${Math.max(0, this.localShip.getNormalisedSpeed() * 100)}%`
     }
 
     // Peer count

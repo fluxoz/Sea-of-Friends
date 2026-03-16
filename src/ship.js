@@ -2,8 +2,10 @@
  * ship.js – Procedural 3D ship model + physics for local and remote players.
  */
 import * as THREE from 'three'
+import { WORLD_HALF } from './world.js'
 
-const WORLD_HALF = 4000
+/** Maximum forward speed in m/s; exported so game.js can normalise the gauge. */
+export const MAX_SHIP_SPEED = 13
 
 export class Ship {
   /**
@@ -174,16 +176,15 @@ export class Ship {
 
   /** Update physics for the locally-controlled ship. */
   updateLocal(dt, thrust, turn) {
-    const MAX_SPEED  = 13
-    const ACCEL      = 6
-    const DRAG       = 2.2
+    const ACCEL = 6
+    const DRAG  = 2.2
 
     this.speed += thrust * ACCEL * dt
     this.speed -= this.speed * DRAG * dt
-    this.speed  = Math.max(-3, Math.min(MAX_SPEED, this.speed))
+    this.speed  = Math.max(-3, Math.min(MAX_SHIP_SPEED, this.speed))
 
     // Turn rate scales with |speed| so a drifting ship can't spin
-    const turnRate = 0.9 * (Math.abs(this.speed) / MAX_SPEED + 0.08)
+    const turnRate = 0.9 * (Math.abs(this.speed) / MAX_SHIP_SPEED + 0.08)
     this.rotationY += turn * turnRate * dt
 
     this.position.x += Math.sin(this.rotationY) * this.speed * dt
@@ -250,7 +251,7 @@ export class Ship {
 
   setName(name) { this.name = name }
 
-  getNormalisedSpeed(maxSpeed = 13) {
+  getNormalisedSpeed(maxSpeed = MAX_SHIP_SPEED) {
     return Math.max(0, this.speed) / maxSpeed
   }
 
