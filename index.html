@@ -320,6 +320,26 @@
       transition: background 0.15s;
     }
     #voice-mute-btn.muted { background: rgba(244,67,54,0.2); color: #f44336; }
+    #voice-level-bar {
+      width: 100%; height: 5px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 3px; overflow: hidden;
+      border: 1px solid rgba(200,169,110,0.2);
+    }
+    #voice-level-fill {
+      height: 100%; background: #4caf50;
+      border-radius: 3px; width: 0%;
+      transition: width 0.06s ease;
+    }
+    #voice-ptt-btn {
+      padding: 0.35rem 0.7rem; border-radius: 4px; border: none;
+      background: rgba(200,169,110,0.1); color: rgba(200,169,110,0.75);
+      cursor: pointer; font-size: 0.78rem; font-family: inherit;
+      transition: background 0.15s;
+      text-align: left;
+    }
+    #voice-ptt-btn:hover { background: rgba(200,169,110,0.2); }
+    #voice-ptt-btn.ptt-on { background: rgba(76,175,80,0.15); color: #4caf50; }
     #voice-nearby {
       font-size: 0.78rem; opacity: 0.7; min-height: 1.1em;
     }
@@ -373,13 +393,17 @@
     <div id="controls-hint">
       WASD – Sail &nbsp;|&nbsp; Mouse drag – Camera<br>
       Click canvas – Lock cursor &nbsp;|&nbsp; ESC – Unlock<br>
-      Enter – Chat &nbsp;|&nbsp; 🎤 – Voice chat
+      Enter – Chat &nbsp;|&nbsp; 🎤 – Voice chat &nbsp;|&nbsp; V – Push to Talk
     </div>
 
     <!-- Voice chat controls -->
     <div id="voice-panel">
       <label>Voice chat</label>
       <button id="voice-mute-btn">🎤 Mic on</button>
+      <div id="voice-level-bar" title="Microphone input level">
+        <div id="voice-level-fill"></div>
+      </div>
+      <button id="voice-ptt-btn">🎙 Always On</button>
       <label for="voice-device-select">Input device</label>
       <select id="voice-device-select">
         <option value="">Default microphone</option>
