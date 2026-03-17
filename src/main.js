@@ -11,6 +11,9 @@ const PIRATE_NAMES = [
   'IronHull', 'StormCap', 'BrinyBones', 'CopperKeel',
 ]
 
+/** Must match the maxlength attribute on #name-input in index.html. */
+const MAX_PLAYER_NAME_LENGTH = 20
+
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 const loadingEl    = document.getElementById('loading')
 const nameScreen   = document.getElementById('name-screen')
@@ -78,21 +81,90 @@ function closeChat() {
 function sendChat() {
   const msg = chatInputEl.value.trim()
   if (!msg) { closeChat(); return }
+  if (msg.startsWith('/')) {
+    handleCommand(msg)
+    closeChat()
+    return
+  }
   network.sendChatMessage(msg)
   addChatMessage('You', msg, '#c8a96e')
   closeChat()
 }
 
+/**
+ * Handle a '/' slash command entered by the local player.
+ * @param {string} raw  – the full input string including the leading '/'
+ */
+function handleCommand(raw) {
+  const parts   = raw.slice(1).trim().split(/\s+/)
+  const cmd     = parts[0].toLowerCase()
+  const args    = parts.slice(1)
+
+  switch (cmd) {
+    case 'help':
+      addSystemMessage('Commands: /help  /clear  /name <newname>')
+      break
+
+    case 'clear':
+      while (chatMessages.firstChild) chatMessages.removeChild(chatMessages.firstChild)
+      break
+
+    case 'name': {
+      const newName = args.join(' ').trim().slice(0, MAX_PLAYER_NAME_LENGTH)
+      if (!newName) { addSystemMessage('Usage: /name <newname>'); break }
+      network.setLocalInfo(newName, network.getLocalColor() ?? '#c8a96e')
+      addSystemMessage(`You are now known as "${newName}"`)
+      break
+    }
+
+    default:
+      addSystemMessage(`Unknown command "/${cmd}". Type /help for a list.`)
+  }
+}
+
+function nowTimestamp() {
+  const d = new Date()
+  return d.getHours().toString().padStart(2, '0') + ':'
+       + d.getMinutes().toString().padStart(2, '0')
+}
+
 function addChatMessage(name, text, color) {
   const div  = document.createElement('div')
-  const span = document.createElement('span')
-  span.style.color = color
-  span.textContent = name
-  div.appendChild(span)
+
+  const ts = document.createElement('span')
+  ts.className   = 'chat-ts'
+  ts.textContent = nowTimestamp()
+  div.appendChild(ts)
+
+  const nameSpan = document.createElement('span')
+  nameSpan.style.color = color
+  nameSpan.textContent = name
+  div.appendChild(nameSpan)
+
   div.appendChild(document.createTextNode(': ' + text))
   chatMessages.appendChild(div)
   chatMessages.scrollTop = chatMessages.scrollHeight
   // Keep at most 60 messages
+  while (chatMessages.children.length > 60) {
+    chatMessages.removeChild(chatMessages.firstChild)
+  }
+}
+
+function addSystemMessage(text) {
+  const div  = document.createElement('div')
+
+  const ts = document.createElement('span')
+  ts.className   = 'chat-ts'
+  ts.textContent = nowTimestamp()
+  div.appendChild(ts)
+
+  const msg = document.createElement('span')
+  msg.className   = 'chat-sys'
+  msg.textContent = text
+  div.appendChild(msg)
+
+  chatMessages.appendChild(div)
+  chatMessages.scrollTop = chatMessages.scrollHeight
   while (chatMessages.children.length > 60) {
     chatMessages.removeChild(chatMessages.firstChild)
   }
