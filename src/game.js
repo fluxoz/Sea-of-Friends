@@ -28,6 +28,9 @@ export class Game {
 
     // Public callbacks
     this.onPlayerCountChange = null
+
+    /** @type {import('./audio.js').ProximityAudio|null} */
+    this._audio = null
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -209,6 +212,7 @@ export class Game {
     const ship = this.ships.get(peerId)
     if (ship) { ship.destroy(); this.ships.delete(peerId) }
     this._removeLabel(peerId)
+    if (this._audio) this._audio.removePeer(peerId)
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -272,6 +276,7 @@ export class Game {
       this._updateCamera()
       this._sendPosition(now)
       this._updateHUD()
+      this._updateAudioVolumes()
     }
 
     this._updateAllLabels()
@@ -360,6 +365,11 @@ export class Game {
 
   getPlayerCount() { return this.ships.size + 1 }
 
+  /** Attach the ProximityAudio instance so volumes update each frame. */
+  setAudio(proximityAudio) {
+    this._audio = proximityAudio
+  }
+
   setChatMode(active) {
     this._chatMode = active
     if (active && document.pointerLockElement) document.exitPointerLock()
@@ -367,6 +377,16 @@ export class Game {
 
   _notifyCount() {
     if (this.onPlayerCountChange) this.onPlayerCountChange()
+  }
+
+  _updateAudioVolumes() {
+    if (!this._audio || !this._audio.isEnabled()) return
+    const localPos = this.localShip.getPosition()
+    const peerPositions = new Map()
+    this.ships.forEach((ship, peerId) => {
+      peerPositions.set(peerId, ship.getPosition())
+    })
+    this._audio.updateVolumes(localPos, peerPositions)
   }
 
   _onResize() {
