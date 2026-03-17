@@ -118,6 +118,11 @@ export class NetworkManager {
     return this.peers.get(peerId)
   }
 
+  /** Return the colour hex string that was set via setLocalInfo, or null. */
+  getLocalColor() {
+    return this._localInfo?.color ?? null
+  }
+
   /** Total player count including the local player. */
   getPeerCount() {
     return this.peers.size + 1
