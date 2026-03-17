@@ -36,6 +36,8 @@ const voicePanel        = document.getElementById('voice-panel')
 const voiceMuteBtn      = document.getElementById('voice-mute-btn')
 const voiceDeviceSelect = document.getElementById('voice-device-select')
 const voiceNearby       = document.getElementById('voice-nearby')
+const voiceLevelFill    = document.getElementById('voice-level-fill')
+const voicePttBtn       = document.getElementById('voice-ptt-btn')
 
 // ── Global state ──────────────────────────────────────────────────────────────
 let game     = null
@@ -109,7 +111,8 @@ function updateVoiceUI() {
   if (audio.isEnabled()) {
     voiceBtn.classList.add('active')
     voiceBtn.title = 'Voice chat – click to manage'
-    voiceBtn.textContent = audio.isMuted() ? '🔇' : '🎤'
+    const pttTalking = audio.isPttMode() && audio.isPttHeld()
+    voiceBtn.textContent = audio.isMuted() ? '🔇' : (pttTalking ? '📢' : '🎤')
     if (audio.isMuted()) voiceBtn.classList.add('muted')
     else voiceBtn.classList.remove('muted')
     voiceMuteBtn.textContent = audio.isMuted() ? '🔇 Mic muted' : '🎤 Mic on'
@@ -118,6 +121,13 @@ function updateVoiceUI() {
     voiceBtn.classList.remove('active', 'muted')
     voiceBtn.textContent = '🎤'
     voiceBtn.title = 'Enable voice chat'
+  }
+
+  // PTT mode toggle button
+  if (voicePttBtn) {
+    const ptt = audio.isPttMode()
+    voicePttBtn.textContent = ptt ? '📢 Push to Talk  [hold V]' : '🎙 Always On'
+    voicePttBtn.classList.toggle('ptt-on', ptt)
   }
 }
 
@@ -433,6 +443,12 @@ voiceMuteBtn.addEventListener('click', () => {
   updateVoiceUI()
 })
 
+voicePttBtn.addEventListener('click', () => {
+  if (!audio) return
+  audio.setPttMode(!audio.isPttMode())
+  updateVoiceUI()
+})
+
 voiceDeviceSelect.addEventListener('change', async () => {
   if (!audio || !audio.isEnabled()) return
   const deviceId = voiceDeviceSelect.value
@@ -446,6 +462,52 @@ document.addEventListener('click', e => {
     voicePanel.classList.remove('open')
   }
 })
+
+// ── PTT key (V) ───────────────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.code !== 'KeyV') return
+  if (!hudEl || hudEl.style.display === 'none') return
+  if (chatOpen) return
+  if (!audio || !audio.isEnabled() || !audio.isPttMode()) return
+  e.preventDefault()
+  if (!e.repeat) {
+    audio.pressPTT()
+    updateVoiceUI()
+  }
+})
+
+document.addEventListener('keyup', e => {
+  if (e.code !== 'KeyV') return
+  if (!audio || !audio.isEnabled() || !audio.isPttMode()) return
+  audio.releasePTT()
+  updateVoiceUI()
+})
+
+// ── Voice level & nearby update (≈20 fps) ─────────────────────────────────────
+// The early-return inside the callback means this does negligible work when
+// voice is not active, so the interval doesn't need to be torn down.
+setInterval(() => {
+  if (!audio || !audio.isEnabled()) return
+
+  // Update mic level visualiser bar
+  if (voiceLevelFill) {
+    const level = audio.getInputLevel()
+    // Scale RMS (typically 0–0.5 when speaking) to fill the bar comfortably
+    voiceLevelFill.style.width = `${Math.min(100, level * 400)}%`
+    // Turn red when muted so user knows their mic is off
+    voiceLevelFill.style.background = audio.isMuted()
+      ? '#f44336'
+      : (audio.isPttMode() && !audio.isPttHeld() ? '#f0a020' : '#4caf50')
+  }
+
+  // Update nearby-sailors display
+  if (voiceNearby) {
+    const n = audio.getNearbyPeerIds().length
+    voiceNearby.textContent = n > 0
+      ? `🔊 ${n} sailor${n !== 1 ? 's' : ''} in range`
+      : '🔈 No sailors in range'
+  }
+}, 50)
 
 // ── Go ────────────────────────────────────────────────────────────────────────
 init()
