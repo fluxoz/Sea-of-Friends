@@ -83,6 +83,13 @@ export class NetworkManager {
     onChat((data, peerId) => {
       if (this.onChat) this.onChat(peerId, data)
     })
+
+    // ── Audio stream helpers ───────────────────────────────────────────────
+    // Thin wrappers so the ProximityAudio module does not need a direct
+    // reference to the internal Trystero room object.
+    this.addStream    = (stream, targets) => room.addStream(stream, targets)
+    this.removeStream = (stream, targets) => room.removeStream(stream, targets)
+    this.onStream     = cb              => room.onPeerStream(cb)
   }
 
   /** Announce our name & colour to all current and future peers. */
