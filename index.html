@@ -92,31 +92,41 @@
     /* ── Chat ────────────────────────────────────────────────── */
     #chat-box {
       position: absolute; bottom: 1rem; left: 1rem;
-      width: min(420px, calc(100vw - 2rem));
+      width: min(560px, calc(100vw - 2rem));
       pointer-events: all;
     }
     #chat-messages {
-      max-height: 160px; overflow-y: auto;
-      background: rgba(0,0,0,0.5); padding: 0.5rem 0.7rem;
-      border-radius: 5px 5px 0 0; color: #ddd; font-size: 0.83rem;
-      line-height: 1.45;
+      height: 260px; overflow-y: auto;
+      background: rgba(0,0,0,0.65); padding: 0.6rem 0.9rem;
+      border-radius: 5px 5px 0 0; color: #ddd; font-size: 0.88rem;
+      line-height: 1.55; border: 1px solid rgba(200,169,110,0.2);
+      border-bottom: none;
     }
     #chat-messages:empty { display: none; }
+    .chat-ts {
+      color: rgba(200,169,110,0.55); font-size: 0.75rem; margin-right: 0.35rem;
+    }
+    .chat-sys {
+      color: #7ec8c8; font-style: italic;
+    }
     #chat-input-row {
-      display: none; gap: 0.4rem;
+      display: none; gap: 0;
     }
     #chat-input-row.active { display: flex; }
     #chat-input {
-      flex: 1; padding: 0.4rem 0.8rem;
-      background: rgba(0,0,0,0.75); border: 1px solid #c8a96e;
+      flex: 1; padding: 0.5rem 0.9rem;
+      background: rgba(0,0,0,0.85); border: 1px solid #c8a96e;
       border-top: none; color: #fff; border-radius: 0 0 0 5px;
-      font-size: 0.85rem; outline: none;
+      font-size: 0.88rem; outline: none; font-family: inherit;
     }
+    #chat-input::placeholder { color: rgba(255,255,255,0.3); }
     #chat-send {
-      padding: 0.4rem 1rem; background: #c8a96e; color: #0a1628;
+      padding: 0.5rem 1.4rem; background: #c8a96e; color: #0a1628;
       border: none; border-radius: 0 0 5px 0; cursor: pointer;
-      font-size: 0.85rem; font-family: inherit;
+      font-size: 0.88rem; font-family: inherit; font-weight: bold;
+      white-space: nowrap;
     }
+    #chat-send:hover { background: #e8c97e; }
 
     /* ── Controls hint ───────────────────────────────────────── */
     #controls-hint {
