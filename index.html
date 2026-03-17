@@ -59,11 +59,17 @@
     /* ── HUD ─────────────────────────────────────────────────── */
     #hud { position: fixed; inset: 0; pointer-events: none; z-index: 100; }
 
-    #peer-count {
+    #hud-top-right {
       position: absolute; top: 1rem; right: 1rem;
+      display: flex; align-items: center; gap: 0.5rem;
+      pointer-events: all;
+    }
+
+    #peer-count {
       color: #c8a96e; background: rgba(0,0,0,0.55);
       padding: 0.45rem 1rem; border-radius: 5px; font-size: 0.9rem;
       border: 1px solid rgba(200,169,110,0.25);
+      white-space: nowrap;
     }
 
     #compass {
@@ -143,7 +149,6 @@
 
     /* ── Voice chat ──────────────────────────────────────────── */
     #voice-btn {
-      position: absolute; top: 1rem; right: 8rem;
       background: rgba(0,0,0,0.55); border: 1px solid rgba(200,169,110,0.25);
       color: #c8a96e; padding: 0.4rem 0.75rem; border-radius: 5px;
       font-size: 1rem; cursor: pointer; pointer-events: all;
@@ -201,7 +206,10 @@
 
   <div id="hud" style="display:none">
     <div id="net-status">● DHT</div>
-    <div id="peer-count">⚓ 1 sailor</div>
+    <div id="hud-top-right">
+      <button id="voice-btn" title="Voice chat">🎤</button>
+      <div id="peer-count">⚓ 1 sailor</div>
+    </div>
     <div id="compass">N</div>
     <div id="speed-bar">
       <span>SPEED</span>
@@ -221,7 +229,6 @@
     </div>
 
     <!-- Voice chat controls -->
-    <button id="voice-btn" title="Voice chat">🎤</button>
     <div id="voice-panel">
       <label>Voice chat</label>
       <button id="voice-mute-btn">🎤 Mic on</button>
