@@ -30,61 +30,55 @@ npm run build      # output in dist/
 npm run preview    # serve the production build
 ```
 
-## Gameplay
+## Nix
 
-| Key | Action |
-|---|---|
-| `W` / `↑` | Sail forward |
-| `S` / `↓` | Reverse |
-| `A` / `←` | Turn port |
-| `D` / `→` | Turn starboard |
-| Mouse drag | Rotate camera |
-| Scroll | Zoom |
-| Click canvas | Lock cursor for mouse-look |
-| `Enter` | Open chat |
-| `ESC` | Close chat / release cursor |
+A [`flake.nix`](./flake.nix) is provided for reproducible development, building and deployment.
 
-Every player automatically connects to everyone else in the same logical world (`world-1`) via the DHT.  
-Ships are colour-coded per player; name labels float above the mast.
-=======
-# Sea of Friends
+### Prerequisites
 
-A Sea of Thieves–inspired sandbox game that connects players directly via
-**peer-to-peer WebRTC** — no backend required.
+- [Nix](https://nixos.org/download/) with flakes enabled
+- (optional) [direnv](https://direnv.net/) + [nix-direnv](https://github.com/nix-community/nix-direnv) for automatic shell activation
 
-Peers discover each other through **BitTorrent DHT trackers**, and WebRTC's
-built-in **ICE/STUN** handles NAT hole-punching so players behind routers can
-still connect.
+### Development shell
 
-## Tech Stack
+```bash
+# enter the dev shell (provides node + npm)
+nix develop
 
-| Layer | Library |
-|-------|---------|
-| 3D rendering | [three.js](https://threejs.org) |
-| P2P networking | [trystero](https://github.com/dmotz/trystero) (BitTorrent strategy) |
-| Build tool | [Vite](https://vite.dev) |
+# or let direnv activate it automatically (one-time setup)
+direnv allow
+```
 
-## Getting Started
+Inside the shell the usual npm workflow applies:
 
 ```bash
 npm install
-npm run dev
+npm run dev      # http://localhost:3000
+npm run build
+npm run preview
 ```
 
-Open the URL shown by Vite (usually `http://localhost:5173`).
+### Building
 
-1. Enter a **room code** — any short string you choose.
-2. Share the same room code with a friend.
-3. Both players join the same ocean and can see each other's ships.
+```bash
+nix build        # builds dist/ → result/
+```
 
-### Controls
+> **First run:** `buildNpmPackage` requires a dependency hash.  
+> Run `nix build` once — it will fail and print the correct hash.  
+> Replace `pkgs.lib.fakeHash` in `flake.nix` with that value, then run `nix build` again.
 
-| Key | Action |
-|-----|--------|
-| W / S | Forward / reverse |
-| A / D | Turn left / right |
-| Space | Speed boost |
-| Mouse | Look around (click to capture pointer) |
+### Running (production preview)
+
+```bash
+nix run          # builds + serves via vite preview
+```
+
+### Development server via Nix
+
+```bash
+nix run .#dev    # starts the Vite dev server
+```
 
 ## Architecture
 
@@ -103,6 +97,23 @@ src/
 └── ui/
     └── hud.js           Lobby overlay + in-game HUD
 ```
+
+## Gameplay
+
+| Key | Action |
+|---|---|
+| `W` / `↑` | Sail forward |
+| `S` / `↓` | Reverse |
+| `A` / `←` | Turn port |
+| `D` / `→` | Turn starboard |
+| Mouse drag | Rotate camera |
+| Scroll | Zoom |
+| Click canvas | Lock cursor for mouse-look |
+| `Enter` | Open chat |
+| `ESC` | Close chat / release cursor |
+
+Every player automatically connects to everyone else in the same logical world (`world-1`) via the DHT.  
+Ships are colour-coded per player; name labels float above the mast.
 
 ## How P2P Works
 
