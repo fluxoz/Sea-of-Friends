@@ -18,6 +18,12 @@ export class ProximityAudio {
     this._micTrack     = null
     /** @type {Map<string, {source: MediaStreamAudioSourceNode, gainNode: GainNode}>} */
     this._peerNodes    = new Map()
+    /**
+     * Streams received from peers before the AudioContext was created.
+     * Flushed into the audio graph as soon as enable() creates the context.
+     * @type {Map<string, MediaStream>}
+     */
+    this._pendingStreams = new Map()
     this._enabled      = false
     this._muted        = false
     this._pttMode      = false  // push-to-talk mode
@@ -63,7 +69,13 @@ export class ProximityAudio {
     this._analyserBuf = null
   }
 
-  // ── Setup ──────────────────────────────────────────────────────────────────
+  /** Disconnect and remove the Web Audio nodes for a single peer. */
+  _disconnectPeer(peerId) {
+    const nodes = this._peerNodes.get(peerId)
+    if (!nodes) return
+    try { nodes.source.disconnect(); nodes.gainNode.disconnect() } catch {}
+    this._peerNodes.delete(peerId)
+  }
 
   /**
    * Provide the Trystero room stream helpers.  Call this once the room is
@@ -101,6 +113,14 @@ export class ProximityAudio {
       // here because enable() is always triggered by a button click.
       this._context = new AudioContext()
 
+      // Flush any peer streams that arrived before the context existed.
+      // Trystero fires onPeerStream only once per negotiation, so without
+      // this buffering the streams would be silently dropped.
+      this._pendingStreams.forEach((stream, peerId) => {
+        this._attachPeerStream(stream, peerId)
+      })
+      this._pendingStreams.clear()
+
       // Set up the analyser for the local mic level visualiser.
       this._connectAnalyser(this._localStream)
 
@@ -130,10 +150,11 @@ export class ProximityAudio {
       this._micTrack    = null
     }
 
-    this._peerNodes.forEach(({ gainNode, source }) => {
-      try { source.disconnect(); gainNode.disconnect() } catch {}
+    this._peerNodes.forEach((_nodes, peerId) => {
+      this._disconnectPeer(peerId)
     })
     this._peerNodes.clear()
+    this._pendingStreams.clear()
 
     this._disconnectAnalyser()
 
@@ -148,9 +169,18 @@ export class ProximityAudio {
   // ── Per-peer stream management ─────────────────────────────────────────────
 
   _attachPeerStream(stream, peerId) {
-    if (!this._context) return
+    if (!this._context) {
+      // Context not ready yet – buffer the stream so it can be attached once
+      // enable() creates the AudioContext.  Without this, output is lost
+      // because Trystero only fires onPeerStream once per negotiation.
+      this._pendingStreams.set(peerId, stream)
+      return
+    }
     // Resume context if suspended (autoplay policy)
     if (this._context.state === 'suspended') this._context.resume().catch(() => {})
+
+    // Remove any existing graph for this peer before replacing it.
+    this._disconnectPeer(peerId)
 
     const source   = this._context.createMediaStreamSource(stream)
     const gainNode = this._context.createGain()
@@ -163,10 +193,9 @@ export class ProximityAudio {
 
   /** Clean up audio graph for a peer who has left the room. */
   removePeer(peerId) {
-    const nodes = this._peerNodes.get(peerId)
-    if (!nodes) return
-    try { nodes.source.disconnect(); nodes.gainNode.disconnect() } catch {}
-    this._peerNodes.delete(peerId)
+    // Also remove from the pending buffer in case they left before we enabled.
+    this._pendingStreams.delete(peerId)
+    this._disconnectPeer(peerId)
   }
 
   // ── Volume update (called every frame) ────────────────────────────────────
