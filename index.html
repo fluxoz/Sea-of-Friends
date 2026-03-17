@@ -72,6 +72,32 @@
       white-space: nowrap;
     }
 
+    /* ── Latency list ────────────────────────────────────────── */
+    #latency-list {
+      position: absolute; top: 3.6rem; right: 1rem;
+      min-width: 160px;
+      background: rgba(0,0,0,0.55); border-radius: 5px;
+      border: 1px solid rgba(200,169,110,0.25);
+      overflow: hidden;
+      display: none;
+    }
+    #latency-list-title {
+      padding: 0.3rem 0.8rem;
+      font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em;
+      color: rgba(200,169,110,0.6);
+      border-bottom: 1px solid rgba(200,169,110,0.15);
+    }
+    .latency-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 0.25rem 0.8rem; gap: 1.2rem;
+      font-size: 0.8rem; color: #ddd;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+    .latency-row:last-child { border-bottom: none; }
+    .latency-row-ms {
+      color: #4caf50; font-size: 0.75rem; white-space: nowrap;
+    }
+
     #compass {
       position: absolute; top: 1rem; left: 50%; transform: translateX(-50%);
       color: #c8a96e; background: rgba(0,0,0,0.55);
@@ -149,6 +175,10 @@
       padding: 2px 8px; border-radius: 3px;
       font-size: 0.72rem; white-space: nowrap;
       z-index: 50; border: 1px solid rgba(255,255,255,0.15);
+      display: flex; align-items: center; gap: 5px;
+    }
+    .label-latency {
+      color: #4caf50; font-size: 0.65rem; opacity: 0.85;
     }
 
     /* ── Network status ──────────────────────────────────────── */
@@ -216,9 +246,15 @@
 
   <div id="hud" style="display:none">
     <div id="net-status">● DHT</div>
+<<<<<<< HEAD
+    <div id="peer-count">⚓ 1 sailor</div>
+    <div id="latency-list">
+      <div id="latency-list-title">📡 Crew Latency</div>
+=======
     <div id="hud-top-right">
       <button id="voice-btn" title="Voice chat">🎤</button>
       <div id="peer-count">⚓ 1 sailor</div>
+>>>>>>> master
     </div>
     <div id="compass">N</div>
     <div id="speed-bar">

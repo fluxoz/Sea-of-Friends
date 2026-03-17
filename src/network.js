@@ -19,14 +19,18 @@ const ICE_SERVERS = [
 
 const APP_ID = 'sea-of-friends-v1'
 
+/** Interval (ms) between latency pings sent to each peer. */
+const PING_INTERVAL = 2000
+
 export class NetworkManager {
   /**
    * @param {string} roomId – logical "world" name; all players in the same
    *   room connect to each other via the DHT.
    */
   constructor(roomId = 'world-1') {
-    this.peers = new Map() // peerId → {id, name, color}
+    this.peers = new Map() // peerId → {id, name, color, latency}
     this._localInfo = null
+    this._pingTimestamps = new Map() // peerId → performance.now() of last ping
 
     // Callbacks set by Game
     this.onPeerJoin = null
@@ -34,6 +38,7 @@ export class NetworkManager {
     this.onPeerPosition = null
     this.onPeerInfo = null
     this.onChat = null
+    this.onPeerLatency = null
 
     const room = joinRoom(
       { appId: APP_ID, rtcConfig: { iceServers: ICE_SERVERS } },
@@ -46,6 +51,8 @@ export class NetworkManager {
     const [sendPos, onPos]   = room.makeAction('p')  // position
     const [sendInfo, onInfo] = room.makeAction('i')  // player info
     const [sendChat, onChat] = room.makeAction('c')  // chat message
+    const [sendPing, onPing] = room.makeAction('pg') // latency ping
+    const [sendPong, onPong] = room.makeAction('po') // latency pong
 
     this._sendPos  = sendPos
     this._sendInfo = sendInfo
@@ -60,6 +67,7 @@ export class NetworkManager {
     })
 
     room.onPeerLeave(peerId => {
+      this._pingTimestamps.delete(peerId)
       this.peers.delete(peerId)
       if (this.onPeerLeave) this.onPeerLeave(peerId)
     })
@@ -84,12 +92,38 @@ export class NetworkManager {
       if (this.onChat) this.onChat(peerId, data)
     })
 
+<<<<<<< HEAD
+    // ── Latency ping / pong ────────────────────────────────────────────────
+    // When we receive a ping from a peer, reply immediately with a pong.
+    onPing((_data, peerId) => {
+      sendPong({}, [peerId])
+    })
+
+    // When we receive a pong, compute the round-trip time.
+    onPong((_data, peerId) => {
+      const sent = this._pingTimestamps.get(peerId)
+      if (sent === undefined) return
+      const rtt = Math.round(performance.now() - sent)
+      const peer = this.peers.get(peerId)
+      if (peer) peer.latency = rtt
+      if (this.onPeerLatency) this.onPeerLatency(peerId, rtt)
+    })
+
+    // Periodically ping every connected peer.
+    setInterval(() => {
+      this.peers.forEach((_peer, peerId) => {
+        this._pingTimestamps.set(peerId, performance.now())
+        sendPing({}, [peerId])
+      })
+    }, PING_INTERVAL)
+=======
     // ── Audio stream helpers ───────────────────────────────────────────────
     // Thin wrappers so the ProximityAudio module does not need a direct
     // reference to the internal Trystero room object.
     this.addStream    = (stream, targets) => room.addStream(stream, targets)
     this.removeStream = (stream, targets) => room.removeStream(stream, targets)
     this.onStream     = cb              => room.onPeerStream(cb)
+>>>>>>> master
   }
 
   /** Announce our name & colour to all current and future peers. */
