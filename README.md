@@ -1,4 +1,4 @@
-<<<<<<< HEAD
+
 # ⚓ Sea of Friends
 
 A Sea of Thieves-esque browser sandbox game where players sail the same ocean and interact entirely peer-to-peer — **no backend, no servers**.
@@ -113,4 +113,4 @@ src/
 3. **Data channel** — Once connected, game state (position, heading, speed)
    is sent directly between peers over an encrypted WebRTC data channel at
    ~15 updates per second.
->>>>>>> master
+
