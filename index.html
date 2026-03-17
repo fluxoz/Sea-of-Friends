@@ -127,24 +127,101 @@
       width: min(560px, calc(100vw - 2rem));
       pointer-events: all;
     }
+
+    /* Tab bar */
+    #chat-tabs {
+      display: flex;
+      gap: 2px;
+      padding: 0 4px;
+      align-items: flex-end;
+    }
+    .chat-tab {
+      padding: 4px 14px 5px;
+      background: rgba(0,0,0,0.55);
+      border: 1px solid rgba(200,169,110,0.2);
+      border-bottom: none;
+      border-radius: 5px 5px 0 0;
+      color: rgba(200,169,110,0.5);
+      font-size: 0.75rem;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.15s, color 0.15s;
+      white-space: nowrap;
+    }
+    .chat-tab:hover {
+      background: rgba(0,0,0,0.75);
+      color: rgba(200,169,110,0.85);
+    }
+    .chat-tab.active {
+      background: rgba(0,0,0,0.65);
+      color: #c8a96e;
+      border-color: rgba(200,169,110,0.35);
+    }
+    .chat-tab-badge {
+      display: inline-block;
+      background: #c8352a;
+      color: #fff;
+      font-size: 0.62rem;
+      padding: 0 4px;
+      border-radius: 8px;
+      min-width: 14px;
+      text-align: center;
+      vertical-align: middle;
+      margin-left: 3px;
+      line-height: 1.4;
+    }
+    .chat-tab-badge:empty { display: none; }
+
     #chat-messages {
       height: 260px; overflow-y: auto;
       background: rgba(0,0,0,0.65); padding: 0.6rem 0.9rem;
-      border-radius: 5px 5px 0 0; color: #ddd; font-size: 0.88rem;
+      border-radius: 0; color: #ddd; font-size: 0.88rem;
       line-height: 1.55; border: 1px solid rgba(200,169,110,0.2);
       border-bottom: none;
     }
-    #chat-messages:empty { display: none; }
+
+    /* Tab-based message filtering */
+    #chat-box[data-tab="crew"]   [data-type="system"] { display: none; }
+    #chat-box[data-tab="system"] [data-type="chat"]   { display: none; }
+
     .chat-ts {
       color: rgba(200,169,110,0.55); font-size: 0.75rem; margin-right: 0.35rem;
     }
     .chat-sys {
       color: #7ec8c8; font-style: italic;
     }
-    #chat-input-row {
-      display: none; gap: 0;
+    .chat-emote {
+      color: #d4a8d4; font-style: italic;
     }
-    #chat-input-row.active { display: flex; }
+
+    /* Command autocomplete hint */
+    #chat-cmd-hint {
+      display: none;
+      background: rgba(10,22,40,0.96);
+      border-left: 1px solid rgba(200,169,110,0.3);
+      border-right: 1px solid rgba(200,169,110,0.3);
+      border-top: 1px solid rgba(200,169,110,0.15);
+    }
+    #chat-cmd-hint.visible { display: block; }
+    .cmd-hint-item {
+      padding: 0.3rem 0.9rem;
+      font-size: 0.8rem;
+      color: #c8a96e;
+      cursor: pointer;
+      display: flex;
+      gap: 0.5rem;
+      align-items: baseline;
+    }
+    .cmd-hint-item:hover { background: rgba(200,169,110,0.12); }
+    .cmd-hint-item .cmd-args { color: rgba(200,169,110,0.6); font-size: 0.74rem; }
+    .cmd-hint-item .cmd-desc { color: rgba(255,255,255,0.45); font-size: 0.74rem; }
+
+    #chat-input-row {
+      display: flex; gap: 0;
+      opacity: 0.45;
+      transition: opacity 0.15s;
+    }
+    #chat-input-row.active { opacity: 1; }
     #chat-input {
       flex: 1; padding: 0.5rem 0.9rem;
       background: rgba(0,0,0,0.85); border: 1px solid #c8a96e;
@@ -180,6 +257,28 @@
     .label-latency {
       color: #4caf50; font-size: 0.65rem; opacity: 0.85;
     }
+
+    /* ── Chat bubble (floats above ship in 3-D space) ─────────── */
+    .chat-bubble {
+      position: fixed; pointer-events: none;
+      transform: translate(-50%, -100%);
+      background: rgba(0,0,0,0.78); color: #fff;
+      padding: 5px 11px; border-radius: 12px;
+      font-size: 0.78rem; max-width: 220px;
+      text-align: center; word-break: break-word;
+      z-index: 55; border: 1px solid rgba(255,255,255,0.22);
+      line-height: 1.4;
+      transition: opacity 0.6s ease;
+    }
+    .chat-bubble::after {
+      content: '';
+      position: absolute; top: 100%; left: 50%;
+      transform: translateX(-50%);
+      border: 5px solid transparent;
+      border-top-color: rgba(0,0,0,0.78);
+    }
+    .chat-bubble.emote { color: #d4a8d4; font-style: italic; }
+    .chat-bubble.fading { opacity: 0; }
 
     /* ── Network status ──────────────────────────────────────── */
     #net-status {
@@ -258,10 +357,16 @@
       <span>SPEED</span>
       <div id="speed-fill"><div id="speed-fill-inner" style="width:0%"></div></div>
     </div>
-    <div id="chat-box">
+    <div id="chat-box" data-tab="all">
+      <div id="chat-tabs">
+        <button class="chat-tab active" data-tab="all">All</button>
+        <button class="chat-tab" data-tab="crew">Crew <span class="chat-tab-badge" id="badge-crew"></span></button>
+        <button class="chat-tab" data-tab="system">System <span class="chat-tab-badge" id="badge-system"></span></button>
+      </div>
       <div id="chat-messages"></div>
+      <div id="chat-cmd-hint"></div>
       <div id="chat-input-row">
-        <input id="chat-input" type="text" placeholder="Say something…" maxlength="120" />
+        <input id="chat-input" type="text" placeholder="Press Enter to chat… (/help for commands)" maxlength="120" />
         <button id="chat-send">Send</button>
       </div>
     </div>
