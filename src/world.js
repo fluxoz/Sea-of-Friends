@@ -1,11 +1,17 @@
 /**
- * world.js – Ocean (GPU shader), sky dome, islands, palm trees.
+ * world.js – Ocean (GPU shader), sky dome, islands, and Kenney 3D prop decorations.
  *
  * The ocean is rendered entirely on the GPU via a ShaderMaterial so there is
  * no per-frame CPU vertex-buffer update.  A matching JS wave function is
  * exported so the game can read the wave height at any (x, z) for ship bobbing.
+ *
+ * Island and ambient props use free CC0 assets from three Kenney packs:
+ *   • Pirate Kit       – https://kenney.nl/assets/pirate-kit
+ *   • Watercraft Kit   – https://kenney.nl/assets/watercraft-kit
+ *   • Nature Kit       – https://kenney.nl/assets/nature-kit
  */
 import * as THREE from 'three'
+import { cloneAsset, hasAsset } from './assets.js'
 
 const WORLD_SIZE  = 5000
 const ISLAND_COUNT = 14
@@ -239,6 +245,7 @@ export class World {
       if (Math.hypot(x, z) < 250) continue   // keep spawn area clear
       this._buildIsland(x, z, rng)
     }
+    this._buildAmbientDecor(makeRNG(9001))
   }
 
   _buildIsland(x, z, rng) {
@@ -272,18 +279,91 @@ export class World {
     top.castShadow = true
     group.add(top)
 
-    // Palm trees
-    const numTrees = 1 + Math.floor(rng() * 5)
+    // ── Palm trees (Kenney Pirate Kit + Nature Kit) ───────────────────────────
+    const numTrees  = 1 + Math.floor(rng() * 5)
+    // Alternate between pirate-kit palms and nature-kit palms for variety
+    const palmOptions = [
+      { key: 'palm-detailed-bend',     scale: 2.5 },
+      { key: 'palm-detailed-straight', scale: 2.5 },
+      { key: 'tree-palm-tall',         scale: 8.0 },
+      { key: 'tree-palm-bend',         scale: 8.5 },
+      { key: 'tree-palm-short',        scale: 7.0 },
+    ].filter(o => hasAsset(o.key))
+
     for (let t = 0; t < numTrees; t++) {
+      const angle  = rng() * Math.PI * 2
+      const r      = rng() * radius * 0.55
+      const opt    = palmOptions.length
+        ? palmOptions[Math.floor(rng() * palmOptions.length)]
+        : null
+
+      if (opt) {
+        const palm = cloneAsset(opt.key)
+        palm.scale.setScalar(opt.scale)
+        palm.position.set(
+          Math.cos(angle) * r,
+          height * 0.35,
+          Math.sin(angle) * r,
+        )
+        palm.rotation.y = rng() * Math.PI * 2
+        group.add(palm)
+      } else {
+        // Fallback: procedural palm
+        group.add(this._buildPalmTree(rng))
+      }
+    }
+
+    // ── Rock clusters around the beach perimeter ──────────────────────────────
+    const rockOptions = [
+      { key: 'rocks-a',     scale: 2.0 },
+      { key: 'rocks-b',     scale: 2.0 },
+      { key: 'rocks-c',     scale: 1.8 },
+      { key: 'rocks-sand-a',scale: 1.0 },
+      { key: 'rock-large-a',scale: 8.0 },
+      { key: 'rock-large-b',scale: 8.0 },
+      { key: 'rock-tall-a', scale: 7.0 },
+      { key: 'rock-tall-b', scale: 7.0 },
+    ].filter(o => hasAsset(o.key))
+
+    const numRocks = 2 + Math.floor(rng() * 4)
+    for (let r = 0; r < numRocks; r++) {
+      if (!rockOptions.length) break
+      const angle  = rng() * Math.PI * 2
+      const dist   = radius * (0.9 + rng() * 0.5)
+      const opt    = rockOptions[Math.floor(rng() * rockOptions.length)]
+      const rock   = cloneAsset(opt.key)
+      rock.scale.setScalar(opt.scale)
+      rock.position.set(Math.cos(angle) * dist, 0, Math.sin(angle) * dist)
+      rock.rotation.y = rng() * Math.PI * 2
+      group.add(rock)
+    }
+
+    // ── Island props: barrel, chest, cannon ───────────────────────────────────
+    const propOptions = [
+      { key: 'barrel', scale: 2.0 },
+      { key: 'chest',  scale: 2.0 },
+      { key: 'cannon', scale: 2.5 },
+    ].filter(o => hasAsset(o.key))
+
+    const numProps = Math.floor(rng() * 3)
+    for (let p = 0; p < numProps; p++) {
+      if (!propOptions.length) break
       const angle = rng() * Math.PI * 2
-      const r     = rng() * radius * 0.55
-      const palm  = this._buildPalmTree(rng)
-      palm.position.set(Math.cos(angle) * r, height * 0.35, Math.sin(angle) * r)
-      group.add(palm)
+      const dist  = rng() * radius * 0.4
+      const opt   = propOptions[Math.floor(rng() * propOptions.length)]
+      const prop  = cloneAsset(opt.key)
+      prop.scale.setScalar(opt.scale)
+      prop.position.set(Math.cos(angle) * dist, height * 0.35, Math.sin(angle) * dist)
+      prop.rotation.y = rng() * Math.PI * 2
+      group.add(prop)
     }
 
     this.scene.add(group)
   }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Procedural palm tree (fallback when GLTF assets are absent)
+  // ──────────────────────────────────────────────────────────────────────────
 
   _buildPalmTree(rng) {
     const group   = new THREE.Group()
@@ -314,5 +394,68 @@ export class World {
     }
 
     return group
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Ambient ocean decorations: buoys + small sailing boats
+  // ──────────────────────────────────────────────────────────────────────────
+
+  _buildAmbientDecor(rng) {
+    const HALF = WORLD_SIZE * 0.7
+
+    // ── Buoys ──────────────────────────────────────────────────────────────
+    const buoyKey  = hasAsset('buoy-flag') ? 'buoy-flag' : hasAsset('buoy') ? 'buoy' : null
+    const numBuoys = 22
+    for (let i = 0; i < numBuoys; i++) {
+      if (!buoyKey) break
+      const bx = (rng() - 0.5) * HALF * 2
+      const bz = (rng() - 0.5) * HALF * 2
+      const b  = cloneAsset(buoyKey)
+      b.scale.setScalar(3.0)
+      b.position.set(bx, 0, bz)
+      b.rotation.y = rng() * Math.PI * 2
+      this.scene.add(b)
+    }
+
+    // ── Wrecked ship ────────────────────────────────────────────────────────
+    if (hasAsset('ship-wreck')) {
+      for (let i = 0; i < 3; i++) {
+        const wx = (rng() - 0.5) * HALF * 1.8
+        const wz = (rng() - 0.5) * HALF * 1.8
+        const w  = cloneAsset('ship-wreck')
+        w.scale.setScalar(1.2)
+        w.position.set(wx, -0.5, wz)
+        w.rotation.y = rng() * Math.PI * 2
+        // Slight heel to make it look shipwrecked
+        w.rotation.z = (rng() - 0.5) * 0.4
+        this.scene.add(w)
+      }
+    }
+
+    // ── Ghost ship (eerie lone vessel) ─────────────────────────────────────
+    if (hasAsset('ship-ghost')) {
+      const gx = (rng() - 0.5) * HALF * 1.6
+      const gz = (rng() - 0.5) * HALF * 1.6
+      const g  = cloneAsset('ship-ghost')
+      g.scale.setScalar(1.2)
+      g.position.set(gx, 0, gz)
+      g.rotation.y = rng() * Math.PI * 2
+      this.scene.add(g)
+    }
+
+    // ── Small ambient sailing boats (Kenney Watercraft Kit) ───────────────
+    const sailOptions = ['boat-sail-a', 'boat-sail-b'].filter(k => hasAsset(k))
+    const numBoats    = 6
+    for (let i = 0; i < numBoats; i++) {
+      if (!sailOptions.length) break
+      const key = sailOptions[Math.floor(rng() * sailOptions.length)]
+      const bx  = (rng() - 0.5) * HALF * 1.8
+      const bz  = (rng() - 0.5) * HALF * 1.8
+      const b   = cloneAsset(key)
+      b.scale.setScalar(5.0)
+      b.position.set(bx, 0, bz)
+      b.rotation.y = rng() * Math.PI * 2
+      this.scene.add(b)
+    }
   }
 }
