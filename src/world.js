@@ -315,14 +315,14 @@ export class World {
 
     // ── Rock clusters around the beach perimeter ──────────────────────────────
     const rockOptions = [
-      { key: 'rocks-a',     scale: 2.0 },
-      { key: 'rocks-b',     scale: 2.0 },
-      { key: 'rocks-c',     scale: 1.8 },
-      { key: 'rocks-sand-a',scale: 1.0 },
-      { key: 'rock-large-a',scale: 8.0 },
-      { key: 'rock-large-b',scale: 8.0 },
-      { key: 'rock-tall-a', scale: 7.0 },
-      { key: 'rock-tall-b', scale: 7.0 },
+      { key: 'rocks-a',      scale: 2.0 },
+      { key: 'rocks-b',      scale: 2.0 },
+      { key: 'rocks-c',      scale: 1.8 },
+      { key: 'rocks-sand-a', scale: 1.0 },
+      { key: 'rock-large-a', scale: 8.0 },
+      { key: 'rock-large-b', scale: 8.0 },
+      { key: 'rock-tall-a',  scale: 7.0 },
+      { key: 'rock-tall-b',  scale: 7.0 },
     ].filter(o => hasAsset(o.key))
 
     const numRocks = 2 + Math.floor(rng() * 4)
