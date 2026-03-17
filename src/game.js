@@ -40,6 +40,9 @@ export class Game {
 
     /** @type {import('./audio.js').ProximityAudio|null} */
     this._audio = null
+
+    /** @type {import('./soundscape.js').Soundscape|null} */
+    this._soundscape = null
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -343,6 +346,7 @@ export class Game {
       this._sendPosition(now)
       this._updateHUD()
       this._updateAudioVolumes()
+      this._updateSoundscape()
     }
 
     this._updateAllLabels()
@@ -480,6 +484,11 @@ export class Game {
     this._audio = proximityAudio
   }
 
+  /** Attach the Soundscape instance so it receives per-frame speed updates. */
+  setSoundscape(soundscape) {
+    this._soundscape = soundscape
+  }
+
   setChatMode(active) {
     this._chatMode = active
     if (active && document.pointerLockElement) document.exitPointerLock()
@@ -546,6 +555,11 @@ export class Game {
       peerPositions.set(peerId, ship.getPosition())
     })
     this._audio.updateVolumes(localPos, peerPositions)
+  }
+
+  _updateSoundscape() {
+    if (!this._soundscape || !this._soundscape.isEnabled()) return
+    this._soundscape.update(this.localShip.getNormalisedSpeed())
   }
 
   _onResize() {

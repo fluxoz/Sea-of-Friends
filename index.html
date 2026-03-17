@@ -298,6 +298,16 @@
     #voice-btn.active { color: #4caf50; border-color: rgba(76,175,80,0.4); }
     #voice-btn.muted  { color: #f44336; border-color: rgba(244,67,54,0.4); }
 
+    #sound-btn {
+      background: rgba(0,0,0,0.55); border: 1px solid rgba(200,169,110,0.25);
+      color: #c8a96e; padding: 0.4rem 0.75rem; border-radius: 5px;
+      font-size: 1rem; cursor: pointer; pointer-events: all;
+      transition: background 0.2s;
+      user-select: none;
+    }
+    #sound-btn:hover { background: rgba(0,0,0,0.75); }
+    #sound-btn.muted { color: rgba(200,169,110,0.35); }
+
     #voice-panel {
       position: absolute; top: 3.5rem; right: 1rem;
       background: rgba(10,22,40,0.92); border: 1px solid rgba(200,169,110,0.3);
@@ -378,6 +388,7 @@
   <div id="hud" style="display:none">
     <div id="net-status">● DHT</div>
     <div id="hud-top-right">
+      <button id="sound-btn" title="Mute ambient sound">🔊</button>
       <button id="voice-btn" title="Voice chat">🎤</button>
       <div id="peer-count">⚓ 1 sailor</div>
     </div>
