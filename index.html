@@ -1,44 +1,187 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Sea of Friends</title>
-    <link rel="stylesheet" href="/styles.css" />
-  </head>
-  <body>
-    <canvas id="game-canvas"></canvas>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sea of Friends</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-    <div id="hud">
-      <div id="hud-connection">
-        <span id="hud-status">⏳ Connecting…</span>
-        <span id="hud-peers">Players: 1</span>
-      </div>
-      <div id="hud-coords"></div>
-      <div id="hud-controls">
-        <p>WASD — Move · Mouse — Look · Space — Boost</p>
+    body {
+      background: #0a1628;
+      overflow: hidden;
+      font-family: 'Georgia', serif;
+      user-select: none;
+    }
+
+    #canvas { display: block; width: 100vw; height: 100vh; }
+
+    /* ── Loading ─────────────────────────────────────────────── */
+    #loading {
+      position: fixed; inset: 0;
+      background: #0a1628;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      color: #c8a96e; z-index: 1000;
+      gap: 1rem;
+    }
+    #loading h1 { font-size: 3.5rem; text-shadow: 0 0 30px #c8a96e88; letter-spacing: 0.05em; }
+    #loading p  { opacity: 0.65; font-size: 1.1rem; }
+
+    /* ── Name screen ─────────────────────────────────────────── */
+    #name-screen {
+      position: fixed; inset: 0;
+      background: rgba(10, 22, 40, 0.93);
+      display: none; flex-direction: column;
+      align-items: center; justify-content: center;
+      color: #c8a96e; z-index: 900; gap: 1.2rem;
+    }
+    #name-screen h2 { font-size: 2.2rem; text-shadow: 0 0 20px #c8a96e66; }
+    #name-screen p  { opacity: 0.6; font-size: 0.9rem; }
+    #name-screen label { font-size: 0.78rem; opacity: 0.55; text-transform: uppercase; letter-spacing: 0.08em; align-self: flex-start; }
+    #name-input, #room-input {
+      padding: 0.55rem 1.2rem; font-size: 1.1rem;
+      background: rgba(255,255,255,0.08); border: 2px solid #c8a96e;
+      color: #fff; border-radius: 5px; text-align: center; outline: none;
+      width: 260px;
+    }
+    #name-input { font-size: 1.3rem; }
+    #name-input:focus, #room-input:focus { border-color: #e8c97e; box-shadow: 0 0 10px #c8a96e44; }
+    #join-btn {
+      padding: 0.55rem 2.5rem; background: #c8a96e; color: #0a1628;
+      border: none; border-radius: 5px; font-size: 1.1rem;
+      cursor: pointer; font-family: inherit; font-weight: bold;
+      transition: background 0.2s;
+    }
+    #join-btn:hover { background: #e8c97e; }
+    #join-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* ── HUD ─────────────────────────────────────────────────── */
+    #hud { position: fixed; inset: 0; pointer-events: none; z-index: 100; }
+
+    #peer-count {
+      position: absolute; top: 1rem; right: 1rem;
+      color: #c8a96e; background: rgba(0,0,0,0.55);
+      padding: 0.45rem 1rem; border-radius: 5px; font-size: 0.9rem;
+      border: 1px solid rgba(200,169,110,0.25);
+    }
+
+    #compass {
+      position: absolute; top: 1rem; left: 50%; transform: translateX(-50%);
+      color: #c8a96e; background: rgba(0,0,0,0.55);
+      padding: 0.35rem 1.2rem; border-radius: 5px; font-size: 0.9rem;
+      border: 1px solid rgba(200,169,110,0.25);
+      letter-spacing: 0.08em;
+    }
+
+    #speed-bar {
+      position: absolute; bottom: 6rem; left: 50%; transform: translateX(-50%);
+      display: flex; align-items: center; gap: 0.6rem;
+      color: #c8a96e; font-size: 0.8rem;
+    }
+    #speed-fill {
+      width: 100px; height: 8px; background: rgba(255,255,255,0.15);
+      border-radius: 4px; overflow: hidden;
+      border: 1px solid rgba(200,169,110,0.3);
+    }
+    #speed-fill-inner {
+      height: 100%; background: #c8a96e; border-radius: 4px;
+      transition: width 0.15s;
+    }
+
+    /* ── Chat ────────────────────────────────────────────────── */
+    #chat-box {
+      position: absolute; bottom: 1rem; left: 1rem;
+      width: min(420px, calc(100vw - 2rem));
+      pointer-events: all;
+    }
+    #chat-messages {
+      max-height: 160px; overflow-y: auto;
+      background: rgba(0,0,0,0.5); padding: 0.5rem 0.7rem;
+      border-radius: 5px 5px 0 0; color: #ddd; font-size: 0.83rem;
+      line-height: 1.45;
+    }
+    #chat-messages:empty { display: none; }
+    #chat-input-row {
+      display: none; gap: 0.4rem;
+    }
+    #chat-input-row.active { display: flex; }
+    #chat-input {
+      flex: 1; padding: 0.4rem 0.8rem;
+      background: rgba(0,0,0,0.75); border: 1px solid #c8a96e;
+      border-top: none; color: #fff; border-radius: 0 0 0 5px;
+      font-size: 0.85rem; outline: none;
+    }
+    #chat-send {
+      padding: 0.4rem 1rem; background: #c8a96e; color: #0a1628;
+      border: none; border-radius: 0 0 5px 0; cursor: pointer;
+      font-size: 0.85rem; font-family: inherit;
+    }
+
+    /* ── Controls hint ───────────────────────────────────────── */
+    #controls-hint {
+      position: absolute; bottom: 1rem; right: 1rem;
+      color: rgba(200,169,110,0.65); font-size: 0.72rem; text-align: right;
+      line-height: 1.7;
+    }
+
+    /* ── Player name labels ──────────────────────────────────── */
+    .player-label {
+      position: fixed; pointer-events: none;
+      transform: translate(-50%, -100%);
+      background: rgba(0,0,0,0.65); color: #fff;
+      padding: 2px 8px; border-radius: 3px;
+      font-size: 0.72rem; white-space: nowrap;
+      z-index: 50; border: 1px solid rgba(255,255,255,0.15);
+    }
+
+    /* ── Network status ──────────────────────────────────────── */
+    #net-status {
+      position: absolute; top: 1rem; left: 1rem;
+      color: #4caf50; font-size: 0.75rem; opacity: 0.7;
+    }
+  </style>
+</head>
+<body>
+  <div id="loading">
+    <h1>⚓ Sea of Friends</h1>
+    <p>Connecting to the DHT network…</p>
+  </div>
+
+  <div id="name-screen">
+    <h2>⚓ Enter the Sea</h2>
+    <p>P2P · No servers · DHT peer discovery</p>
+    <label for="name-input">Captain's name</label>
+    <input id="name-input" type="text" placeholder="e.g. Blackbeard" maxlength="20" autocomplete="off" />
+    <label for="room-input">Room code</label>
+    <input id="room-input" type="text" placeholder="world-1 (share with friends)" maxlength="32" autocomplete="off" />
+    <button id="join-btn">Set Sail!</button>
+  </div>
+
+  <canvas id="canvas"></canvas>
+
+  <div id="hud" style="display:none">
+    <div id="net-status">● DHT</div>
+    <div id="peer-count">⚓ 1 sailor</div>
+    <div id="compass">N</div>
+    <div id="speed-bar">
+      <span>SPEED</span>
+      <div id="speed-fill"><div id="speed-fill-inner" style="width:0%"></div></div>
+    </div>
+    <div id="chat-box">
+      <div id="chat-messages"></div>
+      <div id="chat-input-row">
+        <input id="chat-input" type="text" placeholder="Say something…" maxlength="120" />
+        <button id="chat-send">Send</button>
       </div>
     </div>
-
-    <div id="lobby" class="overlay">
-      <h1>⚓ Sea of Friends</h1>
-      <p>A peer-to-peer ocean sandbox — no servers required.</p>
-      <div id="lobby-form">
-        <label for="room-input">Room code</label>
-        <input
-          id="room-input"
-          type="text"
-          placeholder="Enter a room code…"
-          maxlength="32"
-          autocomplete="off"
-        />
-        <button id="join-btn" type="button">Set Sail</button>
-      </div>
-      <p class="subtle">
-        Share the same room code with friends to join the same ocean.
-      </p>
+    <div id="controls-hint">
+      WASD – Sail &nbsp;|&nbsp; Mouse drag – Camera<br>
+      Click canvas – Lock cursor &nbsp;|&nbsp; ESC – Unlock<br>
+      Enter – Chat
     </div>
+  </div>
 
-    <script type="module" src="/src/main.js"></script>
-  </body>
+  <script type="module" src="/src/main.js"></script>
+</body>
 </html>
