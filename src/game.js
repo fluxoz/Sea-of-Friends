@@ -7,6 +7,9 @@ import { World, waveHeight }   from './world.js'
 
 const SEND_RATE = 80   // ms between network position broadcasts
 
+/** World-space Y offset used to place chat bubbles above the ship's masthead. */
+const CHAT_BUBBLE_Y_OFFSET = 32
+
 export class Game {
   constructor(canvas) {
     this.canvas   = canvas
@@ -27,6 +30,10 @@ export class Game {
     this._dragMouse  = false
     this._lastMX     = 0
     this._lastMY     = 0
+
+    // Chat bubble overlays
+    this.chatBubbleEls = new Map()  // peerId → { el, timer }
+    this._localBubble  = null       // { el, timer } for the local player
 
     // Public callbacks
     this.onPlayerCountChange = null
@@ -251,6 +258,14 @@ export class Game {
     this.labelEls.delete(peerId)
     this.nameEls.delete(peerId)
     this.latencyEls.delete(peerId)
+
+    // Clean up any chat bubble for this peer
+    const bubble = this.chatBubbleEls.get(peerId)
+    if (bubble) {
+      clearTimeout(bubble.timer)
+      bubble.el.remove()
+      this.chatBubbleEls.delete(peerId)
+    }
   }
 
   _updateAllLabels() {
@@ -271,12 +286,41 @@ export class Game {
       const ndc = worldPos.project(this._camera)
       if (ndc.z > 1) {            // behind camera
         el.style.display = 'none'
-        return
+      } else {
+        el.style.display = 'block'
+        el.style.left = `${(ndc.x * 0.5 + 0.5) * window.innerWidth}px`
+        el.style.top  = `${(-ndc.y * 0.5 + 0.5) * window.innerHeight}px`
       }
-      el.style.display = 'block'
-      el.style.left = `${(ndc.x * 0.5 + 0.5) * window.innerWidth}px`
-      el.style.top  = `${(-ndc.y * 0.5 + 0.5) * window.innerHeight}px`
+
+      // Position the chat bubble (if any) further above the name label
+      const bubble = this.chatBubbleEls.get(peerId)
+      if (bubble) {
+        const bPos = ship.getPosition().clone()
+        bPos.y += CHAT_BUBBLE_Y_OFFSET
+        const bNdc = bPos.project(this._camera)
+        if (bNdc.z > 1) {
+          bubble.el.style.display = 'none'
+        } else {
+          bubble.el.style.display = ''
+          bubble.el.style.left = `${(bNdc.x * 0.5 + 0.5) * window.innerWidth}px`
+          bubble.el.style.top  = `${(-bNdc.y * 0.5 + 0.5) * window.innerHeight}px`
+        }
+      }
     })
+  }
+
+  _updateLocalBubble() {
+    if (!this._localBubble || !this.localShip) return
+    const pos = this.localShip.getPosition().clone()
+    pos.y += CHAT_BUBBLE_Y_OFFSET
+    const ndc = pos.project(this._camera)
+    if (ndc.z > 1) {
+      this._localBubble.el.style.display = 'none'
+      return
+    }
+    this._localBubble.el.style.display = ''
+    this._localBubble.el.style.left = `${(ndc.x * 0.5 + 0.5) * window.innerWidth}px`
+    this._localBubble.el.style.top  = `${(-ndc.y * 0.5 + 0.5) * window.innerHeight}px`
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -302,6 +346,7 @@ export class Game {
     }
 
     this._updateAllLabels()
+    this._updateLocalBubble()
     this._renderer.render(this._scene, this._camera)
   }
 
@@ -438,6 +483,55 @@ export class Game {
   setChatMode(active) {
     this._chatMode = active
     if (active && document.pointerLockElement) document.exitPointerLock()
+  }
+
+  /**
+   * Show a floating chat bubble above a remote peer's ship.
+   * Replaces any existing bubble for that peer.
+   * @param {string}  peerId
+   * @param {string}  text
+   * @param {boolean} [isEmote=false]
+   */
+  showPlayerChat(peerId, text, isEmote = false) {
+    const existing = this.chatBubbleEls.get(peerId)
+    if (existing) {
+      clearTimeout(existing.timer)
+      existing.el.remove()
+    }
+    const bubble = this._spawnBubble(text, isEmote)
+    this.chatBubbleEls.set(peerId, bubble)
+  }
+
+  /**
+   * Show a floating chat bubble above the local player's own ship.
+   * @param {string}  text
+   * @param {boolean} [isEmote=false]
+   */
+  showLocalChat(text, isEmote = false) {
+    if (this._localBubble) {
+      clearTimeout(this._localBubble.timer)
+      this._localBubble.el.remove()
+    }
+    this._localBubble = this._spawnBubble(text, isEmote)
+  }
+
+  /**
+   * Create a chat-bubble element, append it to the body, and schedule removal.
+   * @returns {{ el: HTMLElement, timer: ReturnType<typeof setTimeout> }}
+   */
+  _spawnBubble(text, isEmote) {
+    const el = document.createElement('div')
+    el.className = 'chat-bubble' + (isEmote ? ' emote' : '')
+    el.textContent = text
+    document.body.appendChild(el)
+    // After 6 s start the CSS fade (0.6 s), then remove the element.
+    const FADE_MS   = 650
+    const LINGER_MS = 6000
+    const timer = setTimeout(() => {
+      el.classList.add('fading')
+      setTimeout(() => el.remove(), FADE_MS)
+    }, LINGER_MS)
+    return { el, timer }
   }
 
   _notifyCount() {

@@ -94,8 +94,10 @@ function startGame(playerName) {
     const color = peer?.color || '#aaa'
     if (data.m === 'e') {
       addEmoteMessage(name, data.t)
+      game.showPlayerChat(peerId, `* ${name} ${data.t} *`, true)
     } else {
       addChatMessage(name, data.t, color)
+      game.showPlayerChat(peerId, data.t)
     }
   }
 }
@@ -207,6 +209,7 @@ function sendChat() {
   }
   network.sendChatMessage(msg)
   addChatMessage('You', msg, '#c8a96e')
+  game.showLocalChat(msg)
   // Keep input open so the user can send consecutive messages
   chatInputEl.focus()
 }
@@ -243,6 +246,7 @@ function handleCommand(raw) {
       const myName = network.getLocalName() ?? 'You'
       network.sendEmoteMessage(action)
       addEmoteMessage(myName, action)
+      game.showLocalChat(`* ${myName} ${action} *`, true)
       break
     }
 
@@ -257,6 +261,7 @@ function handleCommand(raw) {
       const rollText = `🎲 rolls ${result} (1–${max})`
       network.sendChatMessage(rollText)
       addChatMessage('You', rollText, '#c8a96e')
+      game.showLocalChat(rollText)
       break
     }
 
