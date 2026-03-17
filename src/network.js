@@ -153,6 +153,11 @@ export class NetworkManager {
     this._sendChat({ t: text })
   }
 
+  /** Broadcast an emote action to every connected peer. */
+  sendEmoteMessage(action) {
+    this._sendChat({ t: action, m: 'e' })
+  }
+
   getPeer(peerId) {
     return this.peers.get(peerId)
   }
@@ -160,6 +165,11 @@ export class NetworkManager {
   /** Return the colour hex string that was set via setLocalInfo, or null. */
   getLocalColor() {
     return this._localInfo?.color ?? null
+  }
+
+  /** Return the player name that was set via setLocalInfo, or null. */
+  getLocalName() {
+    return this._localInfo?.name ?? null
   }
 
   /** Total player count including the local player. */
