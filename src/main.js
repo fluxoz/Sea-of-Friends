@@ -370,11 +370,11 @@ joinBtn.addEventListener('click', () => {
 })
 
 nameInput.addEventListener('keydown', e => {
-  if (e.key === 'Enter') roomInput.focus()
+  if (e.key === 'Enter') { e.stopPropagation(); roomInput.focus() }
 })
 
 roomInput.addEventListener('keydown', e => {
-  if (e.key === 'Enter') joinBtn.click()
+  if (e.key === 'Enter') { e.stopPropagation(); joinBtn.click() }
 })
 
 document.addEventListener('keydown', e => {
