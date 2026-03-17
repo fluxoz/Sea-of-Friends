@@ -1,9 +1,8 @@
-<<<<<<< HEAD
 node_modules/
 dist/
-=======
-node_modules
-dist
->>>>>>> master
 .DS_Store
 *.local
+
+# Nix build result symlinks
+result
+result-*
