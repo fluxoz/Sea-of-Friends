@@ -18,13 +18,64 @@ export class ProximityAudio {
     this._micTrack     = null
     /** @type {Map<string, {source: MediaStreamAudioSourceNode, gainNode: GainNode}>} */
     this._peerNodes    = new Map()
+    /**
+     * Streams received from peers before the AudioContext was created.
+     * Flushed into the audio graph as soon as enable() creates the context.
+     * @type {Map<string, MediaStream>}
+     */
+    this._pendingStreams = new Map()
     this._enabled      = false
     this._muted        = false
+    this._pttMode      = false  // push-to-talk mode
+    this._pttHeld      = false  // PTT key currently held
+    this._analyser     = null   // AnalyserNode for mic level visualisation
+    this._analyserSrc  = null   // MediaStreamAudioSourceNode feeding the analyser
+    this._analyserBuf  = null   // Uint8Array for getByteTimeDomainData
+    this._nearbyPeerIds = []    // peers with gain > 0 after last updateVolumes
     this._addStreamFn  = null
     this._removeStreamFn = null
   }
 
-  // ── Setup ──────────────────────────────────────────────────────────────────
+  // ── Internal helpers ───────────────────────────────────────────────────────
+
+  /** Recompute and apply the mic track enabled state based on all flags. */
+  _applyMicEnabled() {
+    if (!this._micTrack) return
+    // Mic is live when: not force-muted, AND (always-on mode OR PTT key held)
+    this._micTrack.enabled = !this._muted && (!this._pttMode || this._pttHeld)
+  }
+
+  /** Create an AnalyserNode connected to the given stream (no output). */
+  _connectAnalyser(stream) {
+    if (!this._context) return
+    if (this._analyserSrc) {
+      try { this._analyserSrc.disconnect() } catch { /* node may already be disconnected */ }
+    }
+    this._analyser    = this._context.createAnalyser()
+    this._analyser.fftSize = 256
+    this._analyserBuf = new Uint8Array(this._analyser.frequencyBinCount)
+    this._analyserSrc = this._context.createMediaStreamSource(stream)
+    this._analyserSrc.connect(this._analyser)
+    // Intentionally NOT connecting to destination – avoids local echo.
+  }
+
+  /** Tear down the AnalyserNode and its source. */
+  _disconnectAnalyser() {
+    if (this._analyserSrc) {
+      try { this._analyserSrc.disconnect() } catch { /* node may already be disconnected */ }
+      this._analyserSrc = null
+    }
+    this._analyser    = null
+    this._analyserBuf = null
+  }
+
+  /** Disconnect and remove the Web Audio nodes for a single peer. */
+  _disconnectPeer(peerId) {
+    const nodes = this._peerNodes.get(peerId)
+    if (!nodes) return
+    try { nodes.source.disconnect(); nodes.gainNode.disconnect() } catch {}
+    this._peerNodes.delete(peerId)
+  }
 
   /**
    * Provide the Trystero room stream helpers.  Call this once the room is
@@ -57,11 +108,24 @@ export class ProximityAudio {
         video: false,
       })
       this._micTrack = this._localStream.getAudioTracks()[0] ?? null
-      if (this._micTrack) this._micTrack.enabled = !this._muted
 
       // AudioContext must be created after a user gesture; it should be fine
       // here because enable() is always triggered by a button click.
       this._context = new AudioContext()
+
+      // Flush any peer streams that arrived before the context existed.
+      // Trystero fires onPeerStream only once per negotiation, so without
+      // this buffering the streams would be silently dropped.
+      this._pendingStreams.forEach((stream, peerId) => {
+        this._attachPeerStream(stream, peerId)
+      })
+      this._pendingStreams.clear()
+
+      // Set up the analyser for the local mic level visualiser.
+      this._connectAnalyser(this._localStream)
+
+      // Apply PTT / mute state now that we have a mic track.
+      this._applyMicEnabled()
 
       if (this._addStreamFn) this._addStreamFn(this._localStream)
 
@@ -86,10 +150,13 @@ export class ProximityAudio {
       this._micTrack    = null
     }
 
-    this._peerNodes.forEach(({ gainNode, source }) => {
-      try { source.disconnect(); gainNode.disconnect() } catch {}
+    this._peerNodes.forEach((_nodes, peerId) => {
+      this._disconnectPeer(peerId)
     })
     this._peerNodes.clear()
+    this._pendingStreams.clear()
+
+    this._disconnectAnalyser()
 
     if (this._context) {
       this._context.close().catch(() => {})
@@ -102,9 +169,18 @@ export class ProximityAudio {
   // ── Per-peer stream management ─────────────────────────────────────────────
 
   _attachPeerStream(stream, peerId) {
-    if (!this._context) return
+    if (!this._context) {
+      // Context not ready yet – buffer the stream so it can be attached once
+      // enable() creates the AudioContext.  Without this, output is lost
+      // because Trystero only fires onPeerStream once per negotiation.
+      this._pendingStreams.set(peerId, stream)
+      return
+    }
     // Resume context if suspended (autoplay policy)
     if (this._context.state === 'suspended') this._context.resume().catch(() => {})
+
+    // Remove any existing graph for this peer before replacing it.
+    this._disconnectPeer(peerId)
 
     const source   = this._context.createMediaStreamSource(stream)
     const gainNode = this._context.createGain()
@@ -117,10 +193,9 @@ export class ProximityAudio {
 
   /** Clean up audio graph for a peer who has left the room. */
   removePeer(peerId) {
-    const nodes = this._peerNodes.get(peerId)
-    if (!nodes) return
-    try { nodes.source.disconnect(); nodes.gainNode.disconnect() } catch {}
-    this._peerNodes.delete(peerId)
+    // Also remove from the pending buffer in case they left before we enabled.
+    this._pendingStreams.delete(peerId)
+    this._disconnectPeer(peerId)
   }
 
   // ── Volume update (called every frame) ────────────────────────────────────
@@ -134,6 +209,7 @@ export class ProximityAudio {
   updateVolumes(localPos, peerPositions) {
     if (!this._enabled || !this._context) return
 
+    const nearby = []
     this._peerNodes.forEach((nodes, peerId) => {
       const pos = peerPositions.get(peerId)
       if (!pos) return
@@ -143,7 +219,9 @@ export class ProximityAudio {
       // Smooth quadratic fall-off to zero at MAX_HEAR_DISTANCE
       const t    = Math.max(0, 1 - dist / MAX_HEAR_DISTANCE)
       nodes.gainNode.gain.value = t * t
+      if (t > 0) nearby.push(peerId)
     })
+    this._nearbyPeerIds = nearby
   }
 
   // ── Controls ───────────────────────────────────────────────────────────────
@@ -154,7 +232,32 @@ export class ProximityAudio {
    */
   setMuted(muted) {
     this._muted = muted
-    if (this._micTrack) this._micTrack.enabled = !muted
+    this._applyMicEnabled()
+  }
+
+  /**
+   * Toggle between Push-to-Talk mode and Always-On mode.
+   * In PTT mode the mic is silenced until pressPTT() is called.
+   * @param {boolean} enabled
+   */
+  setPttMode(enabled) {
+    this._pttMode = enabled
+    if (!enabled) this._pttHeld = false  // reset held state when leaving PTT
+    this._applyMicEnabled()
+  }
+
+  /** Called when the PTT key is pressed down. Unmutes mic in PTT mode. */
+  pressPTT() {
+    if (!this._pttMode) return
+    this._pttHeld = true
+    this._applyMicEnabled()
+  }
+
+  /** Called when the PTT key is released. Re-mutes mic in PTT mode. */
+  releasePTT() {
+    if (!this._pttMode) return
+    this._pttHeld = false
+    this._applyMicEnabled()
   }
 
   /**
@@ -180,7 +283,10 @@ export class ProximityAudio {
 
       this._localStream = newStream
       this._micTrack    = newStream.getAudioTracks()[0] ?? null
-      if (this._micTrack) this._micTrack.enabled = !this._muted
+      this._applyMicEnabled()
+
+      // Reconnect the analyser to the new stream.
+      this._connectAnalyser(newStream)
 
       if (this._addStreamFn) this._addStreamFn(newStream)
     } catch (err) {
@@ -192,4 +298,29 @@ export class ProximityAudio {
 
   isEnabled() { return this._enabled }
   isMuted()   { return this._muted   }
+  isPttMode() { return this._pttMode }
+  isPttHeld() { return this._pttHeld }
+
+  /**
+   * Return the current RMS amplitude (0–1) of the local microphone.
+   * Returns 0 when voice is not active or the mic track is silent.
+   */
+  getInputLevel() {
+    if (!this._analyser || !this._analyserBuf) return 0
+    this._analyser.getByteTimeDomainData(this._analyserBuf)
+    let sumSq = 0
+    const len  = this._analyserBuf.length
+    for (let i = 0; i < len; i++) {
+      const v = (this._analyserBuf[i] - 128) / 128
+      sumSq += v * v
+    }
+    return Math.sqrt(sumSq / len)
+  }
+
+  /**
+   * Peer IDs whose ships were within hearing range after the last
+   * updateVolumes() call.  Empty array when voice is off or no one is near.
+   * @returns {string[]}
+   */
+  getNearbyPeerIds() { return this._nearbyPeerIds }
 }
