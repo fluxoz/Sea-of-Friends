@@ -81,14 +81,17 @@ function closeChat() {
 function sendChat() {
   const msg = chatInputEl.value.trim()
   if (!msg) { closeChat(); return }
+  chatInputEl.value = ''
   if (msg.startsWith('/')) {
     handleCommand(msg)
-    closeChat()
+    // Keep input open after a command so the user can type another
+    chatInputEl.focus()
     return
   }
   network.sendChatMessage(msg)
   addChatMessage('You', msg, '#c8a96e')
-  closeChat()
+  // Keep input open so the user can send consecutive messages
+  chatInputEl.focus()
 }
 
 /**
