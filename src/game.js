@@ -374,6 +374,49 @@ export class Game {
       const n = this.getPlayerCount()
       countEl.textContent = `⚓ ${n} sailor${n !== 1 ? 's' : ''}`
     }
+
+    // Latency list – show/hide and sync one row per connected peer
+    const listEl = document.getElementById('latency-list')
+    if (listEl) {
+      const hasPeers = this.ships.size > 0
+      listEl.style.display = hasPeers ? 'block' : 'none'
+
+      if (hasPeers) {
+        // Add or update a row for each peer
+        this.ships.forEach((_ship, peerId) => {
+          const peer = this.network?.getPeer(peerId)
+          const name = peer?.name || peerId.slice(0, 8)
+          const ms   = peer?.latency !== undefined ? `${peer.latency}ms` : '—'
+
+          let row = listEl.querySelector(`[data-peer="${CSS.escape(peerId)}"]`)
+          if (!row) {
+            row = document.createElement('div')
+            row.className = 'latency-row'
+            row.dataset.peer = peerId
+
+            const nameSpan = document.createElement('span')
+            nameSpan.className = 'latency-row-name'
+            row.appendChild(nameSpan)
+            row._nameSpan = nameSpan
+
+            const msSpan = document.createElement('span')
+            msSpan.className = 'latency-row-ms'
+            row.appendChild(msSpan)
+            row._msSpan = msSpan
+
+            listEl.appendChild(row)
+          }
+
+          row._nameSpan.textContent = name
+          row._msSpan.textContent   = ms
+        })
+
+        // Remove rows for peers that have left
+        listEl.querySelectorAll('.latency-row').forEach(row => {
+          if (!this.ships.has(row.dataset.peer)) row.remove()
+        })
+      }
+    }
   }
 
   // ──────────────────────────────────────────────────────────────────────────
