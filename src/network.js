@@ -92,6 +92,7 @@ export class NetworkManager {
       if (this.onChat) this.onChat(peerId, data)
     })
 
+<<<<<<< HEAD
     // ── Latency ping / pong ────────────────────────────────────────────────
     // When we receive a ping from a peer, reply immediately with a pong.
     onPing((_data, peerId) => {
@@ -115,6 +116,14 @@ export class NetworkManager {
         sendPing({}, [peerId])
       })
     }, PING_INTERVAL)
+=======
+    // ── Audio stream helpers ───────────────────────────────────────────────
+    // Thin wrappers so the ProximityAudio module does not need a direct
+    // reference to the internal Trystero room object.
+    this.addStream    = (stream, targets) => room.addStream(stream, targets)
+    this.removeStream = (stream, targets) => room.removeStream(stream, targets)
+    this.onStream     = cb              => room.onPeerStream(cb)
+>>>>>>> master
   }
 
   /** Announce our name & colour to all current and future peers. */
@@ -148,6 +157,11 @@ export class NetworkManager {
 
   getPeer(peerId) {
     return this.peers.get(peerId)
+  }
+
+  /** Return the colour hex string that was set via setLocalInfo, or null. */
+  getLocalColor() {
+    return this._localInfo?.color ?? null
   }
 
   /** Total player count including the local player. */
