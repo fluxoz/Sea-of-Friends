@@ -13,7 +13,9 @@ export class Game {
     this.localShip  = null
     this.network    = null
     this.ships      = new Map()   // peerId → Ship
-    this.labelEls   = new Map()   // peerId → HTMLElement
+    this.labelEls   = new Map()   // peerId → label HTMLElement
+    this.nameEls    = new Map()   // peerId → name span HTMLElement
+    this.latencyEls = new Map()   // peerId → latency span HTMLElement
 
     this._chatMode   = false
     this._lastSend   = 0
@@ -217,27 +219,47 @@ export class Game {
 
   _createLabel(peerId, name) {
     const el = document.createElement('div')
-    el.className  = 'player-label'
-    el.textContent = name
+    el.className = 'player-label'
+
+    const nameEl = document.createElement('span')
+    nameEl.className = 'label-name'
+    nameEl.textContent = name
+    el.appendChild(nameEl)
+
+    const latencyEl = document.createElement('span')
+    latencyEl.className = 'label-latency'
+    el.appendChild(latencyEl)
+
     document.body.appendChild(el)
     this.labelEls.set(peerId, el)
+    this.nameEls.set(peerId, nameEl)
+    this.latencyEls.set(peerId, latencyEl)
   }
 
   _updateLabel(peerId, name) {
-    const el = this.labelEls.get(peerId)
-    if (el) el.textContent = name
+    const nameEl = this.nameEls.get(peerId)
+    if (nameEl) nameEl.textContent = name
   }
 
   _removeLabel(peerId) {
     const el = this.labelEls.get(peerId)
     if (el) el.remove()
     this.labelEls.delete(peerId)
+    this.nameEls.delete(peerId)
+    this.latencyEls.delete(peerId)
   }
 
   _updateAllLabels() {
     this.ships.forEach((ship, peerId) => {
       const el = this.labelEls.get(peerId)
       if (!el) return
+
+      // Refresh latency text (value is updated ~every 2 s by ping/pong)
+      const latencyEl = this.latencyEls.get(peerId)
+      if (latencyEl) {
+        const peer = this.network?.getPeer(peerId)
+        latencyEl.textContent = peer?.latency !== undefined ? `${peer.latency}ms` : ''
+      }
 
       const worldPos = ship.getPosition().clone()
       worldPos.y += 20            // above the masthead
