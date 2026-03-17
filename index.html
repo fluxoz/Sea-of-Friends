@@ -343,6 +343,18 @@
     #voice-nearby {
       font-size: 0.78rem; opacity: 0.7; min-height: 1.1em;
     }
+
+    /* ── PTT active indicator ────────────────────────────────── */
+    #ptt-indicator {
+      position: absolute; bottom: 9rem; left: 50%; transform: translateX(-50%);
+      background: rgba(76,175,80,0.90); color: #fff;
+      padding: 0.4rem 1.3rem; border-radius: 6px; font-size: 0.88rem;
+      display: none; z-index: 200; pointer-events: none;
+      border: 2px solid #4caf50; letter-spacing: 0.06em; font-weight: bold;
+      box-shadow: 0 0 14px rgba(76,175,80,0.55);
+      white-space: nowrap;
+    }
+    #ptt-indicator.active { display: block; }
   </style>
 </head>
 <body>
@@ -390,6 +402,7 @@
         <button id="chat-send">Send</button>
       </div>
     </div>
+    <div id="ptt-indicator">📢 TRANSMITTING</div>
     <div id="controls-hint">
       WASD – Sail &nbsp;|&nbsp; Mouse drag – Camera<br>
       Click canvas – Lock cursor &nbsp;|&nbsp; ESC – Unlock<br>

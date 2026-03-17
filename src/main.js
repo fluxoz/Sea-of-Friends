@@ -38,6 +38,7 @@ const voiceDeviceSelect = document.getElementById('voice-device-select')
 const voiceNearby       = document.getElementById('voice-nearby')
 const voiceLevelFill    = document.getElementById('voice-level-fill')
 const voicePttBtn       = document.getElementById('voice-ptt-btn')
+const pttIndicator      = document.getElementById('ptt-indicator')
 
 // ── Global state ──────────────────────────────────────────────────────────────
 let game     = null
@@ -128,6 +129,12 @@ function updateVoiceUI() {
     const ptt = audio.isPttMode()
     voicePttBtn.textContent = ptt ? '📢 Push to Talk  [hold V]' : '🎙 Always On'
     voicePttBtn.classList.toggle('ptt-on', ptt)
+  }
+
+  // PTT active indicator
+  if (pttIndicator) {
+    const pttActive = audio.isEnabled() && audio.isPttMode() && audio.isPttHeld()
+    pttIndicator.classList.toggle('active', pttActive)
   }
 }
 
@@ -468,9 +475,11 @@ document.addEventListener('keydown', e => {
   if (e.code !== 'KeyV') return
   if (!hudEl || hudEl.style.display === 'none') return
   if (chatOpen) return
-  if (!audio || !audio.isEnabled() || !audio.isPttMode()) return
+  if (!audio || !audio.isEnabled()) return
   e.preventDefault()
   if (!e.repeat) {
+    // Auto-switch to PTT mode the first time V is pressed
+    if (!audio.isPttMode()) audio.setPttMode(true)
     audio.pressPTT()
     updateVoiceUI()
   }
@@ -487,7 +496,10 @@ document.addEventListener('keyup', e => {
 // The early-return inside the callback means this does negligible work when
 // voice is not active, so the interval doesn't need to be torn down.
 setInterval(() => {
-  if (!audio || !audio.isEnabled()) return
+  if (!audio || !audio.isEnabled()) {
+    if (pttIndicator) pttIndicator.classList.remove('active')
+    return
+  }
 
   // Update mic level visualiser bar
   if (voiceLevelFill) {
@@ -506,6 +518,11 @@ setInterval(() => {
     voiceNearby.textContent = n > 0
       ? `🔊 ${n} sailor${n !== 1 ? 's' : ''} in range`
       : '🔈 No sailors in range'
+  }
+
+  // Keep the PTT indicator in sync
+  if (pttIndicator) {
+    pttIndicator.classList.toggle('active', audio.isPttMode() && audio.isPttHeld())
   }
 }, 50)
 
