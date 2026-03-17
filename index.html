@@ -59,11 +59,17 @@
     /* ── HUD ─────────────────────────────────────────────────── */
     #hud { position: fixed; inset: 0; pointer-events: none; z-index: 100; }
 
-    #peer-count {
+    #hud-top-right {
       position: absolute; top: 1rem; right: 1rem;
+      display: flex; align-items: center; gap: 0.5rem;
+      pointer-events: all;
+    }
+
+    #peer-count {
       color: #c8a96e; background: rgba(0,0,0,0.55);
       padding: 0.45rem 1rem; border-radius: 5px; font-size: 0.9rem;
       border: 1px solid rgba(200,169,110,0.25);
+      white-space: nowrap;
     }
 
     #compass {
@@ -150,6 +156,44 @@
       position: absolute; top: 1rem; left: 1rem;
       color: #4caf50; font-size: 0.75rem; opacity: 0.7;
     }
+
+    /* ── Voice chat ──────────────────────────────────────────── */
+    #voice-btn {
+      background: rgba(0,0,0,0.55); border: 1px solid rgba(200,169,110,0.25);
+      color: #c8a96e; padding: 0.4rem 0.75rem; border-radius: 5px;
+      font-size: 1rem; cursor: pointer; pointer-events: all;
+      transition: background 0.2s;
+      user-select: none;
+    }
+    #voice-btn:hover { background: rgba(0,0,0,0.75); }
+    #voice-btn.active { color: #4caf50; border-color: rgba(76,175,80,0.4); }
+    #voice-btn.muted  { color: #f44336; border-color: rgba(244,67,54,0.4); }
+
+    #voice-panel {
+      position: absolute; top: 3.5rem; right: 1rem;
+      background: rgba(10,22,40,0.92); border: 1px solid rgba(200,169,110,0.3);
+      border-radius: 6px; padding: 0.9rem 1rem; width: 230px;
+      color: #c8a96e; font-size: 0.82rem; pointer-events: all;
+      display: none; flex-direction: column; gap: 0.65rem;
+      z-index: 200;
+    }
+    #voice-panel.open { display: flex; }
+    #voice-panel label { opacity: 0.65; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.07em; }
+    #voice-device-select {
+      width: 100%; padding: 0.3rem 0.5rem;
+      background: rgba(255,255,255,0.08); border: 1px solid rgba(200,169,110,0.4);
+      color: #fff; border-radius: 4px; font-size: 0.8rem; outline: none;
+    }
+    #voice-mute-btn {
+      padding: 0.35rem 0.7rem; border-radius: 4px; border: none;
+      background: rgba(76,175,80,0.2); color: #4caf50;
+      cursor: pointer; font-size: 0.82rem; font-family: inherit;
+      transition: background 0.15s;
+    }
+    #voice-mute-btn.muted { background: rgba(244,67,54,0.2); color: #f44336; }
+    #voice-nearby {
+      font-size: 0.78rem; opacity: 0.7; min-height: 1.1em;
+    }
   </style>
 </head>
 <body>
@@ -172,7 +216,10 @@
 
   <div id="hud" style="display:none">
     <div id="net-status">● DHT</div>
-    <div id="peer-count">⚓ 1 sailor</div>
+    <div id="hud-top-right">
+      <button id="voice-btn" title="Voice chat">🎤</button>
+      <div id="peer-count">⚓ 1 sailor</div>
+    </div>
     <div id="compass">N</div>
     <div id="speed-bar">
       <span>SPEED</span>
@@ -188,7 +235,18 @@
     <div id="controls-hint">
       WASD – Sail &nbsp;|&nbsp; Mouse drag – Camera<br>
       Click canvas – Lock cursor &nbsp;|&nbsp; ESC – Unlock<br>
-      Enter – Chat
+      Enter – Chat &nbsp;|&nbsp; 🎤 – Voice chat
+    </div>
+
+    <!-- Voice chat controls -->
+    <div id="voice-panel">
+      <label>Voice chat</label>
+      <button id="voice-mute-btn">🎤 Mic on</button>
+      <label for="voice-device-select">Input device</label>
+      <select id="voice-device-select">
+        <option value="">Default microphone</option>
+      </select>
+      <div id="voice-nearby"></div>
     </div>
   </div>
 
