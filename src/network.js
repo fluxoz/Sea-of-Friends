@@ -89,7 +89,7 @@ export class NetworkManager {
     // reference to the internal Trystero room object.
     this.addStream    = (stream, targets) => room.addStream(stream, targets)
     this.removeStream = (stream, targets) => room.removeStream(stream, targets)
-    this.onStream     = cb              => room.onStream(cb)
+    this.onStream     = cb              => room.onPeerStream(cb)
   }
 
   /** Announce our name & colour to all current and future peers. */
