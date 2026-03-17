@@ -258,6 +258,28 @@
       color: #4caf50; font-size: 0.65rem; opacity: 0.85;
     }
 
+    /* ── Chat bubble (floats above ship in 3-D space) ─────────── */
+    .chat-bubble {
+      position: fixed; pointer-events: none;
+      transform: translate(-50%, -100%);
+      background: rgba(0,0,0,0.78); color: #fff;
+      padding: 5px 11px; border-radius: 12px;
+      font-size: 0.78rem; max-width: 220px;
+      text-align: center; word-break: break-word;
+      z-index: 55; border: 1px solid rgba(255,255,255,0.22);
+      line-height: 1.4;
+      transition: opacity 0.6s ease;
+    }
+    .chat-bubble::after {
+      content: '';
+      position: absolute; top: 100%; left: 50%;
+      transform: translateX(-50%);
+      border: 5px solid transparent;
+      border-top-color: rgba(0,0,0,0.78);
+    }
+    .chat-bubble.emote { color: #d4a8d4; font-style: italic; }
+    .chat-bubble.fading { opacity: 0; }
+
     /* ── Network status ──────────────────────────────────────── */
     #net-status {
       position: absolute; top: 1rem; left: 1rem;
