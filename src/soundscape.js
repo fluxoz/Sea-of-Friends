@@ -1,48 +1,62 @@
 /**
  * soundscape.js – Ambient ocean soundscape and ship sound effects.
  *
- * All audio is synthesised procedurally using the Web Audio API.
- * No external audio files are required.
+ * Audio files (all CC0 / Public Domain, no attribution required):
+ *   ocean.mp3    – "Ocean Wide" by JMAustin via greysound (Freesound #31366)
+ *   seagulls.mp3 – "Seagulls screeching on the beach" by felix.blume (Freesound #155747)
+ *   wind.mp3     – "Still Outdoor Air 2 LOOP" by Geoff-Bremner-Audio (Freesound #829081)
+ *   ship.mp3     – "Sailboat Sailing Interior 1" by AugustSandberg (Freesound #252663)
  *
  * Layers:
- *   • Ocean waves  – three-band filtered noise with wave-rhythm LFOs
- *   • Wind         – high-passed noise; volume scales with ship speed
- *   • Seagulls     – occasional procedural gull cries (random 8–30 s apart)
- *   • Ship sounds  – low-freq hull creak + rigging hum, both speed-reactive
+ *   • Ocean waves  – looping field recording, constant background
+ *   • Seagulls     – looping beach ambience with real gull calls
+ *   • Wind         – outdoor air loop; volume scales with ship speed
+ *   • Ship         – sailboat interior creaks/rigging; volume scales with speed
  */
 
 const DEFAULT_VOLUME = 0.7
 
-/** Fill a mono AudioBuffer channel with white noise (designed for looping). */
-function fillNoise(buffer) {
-  const ch = buffer.getChannelData(0)
-  for (let i = 0; i < ch.length; i++) {
-    ch[i] = Math.random() * 2 - 1
-  }
+/**
+ * Paths to sound asset files (relative to the web root / public directory).
+ * Using a separate object makes it easy to swap assets without touching logic.
+ */
+const SOUND_PATHS = {
+  ocean:    '/sounds/ocean.mp3',
+  seagulls: '/sounds/seagulls.mp3',
+  wind:     '/sounds/wind.mp3',
+  ship:     '/sounds/ship.mp3',
+}
+
+/** Gain values for each layer when the ship is at rest. */
+const LAYER_GAINS = {
+  ocean:    0.55,
+  seagulls: 0.35,
+  wind:     0.04,  // rises with speed
+  ship:     0.08,  // rises with speed
 }
 
 export class Soundscape {
   constructor() {
-    this._ctx        = null
-    this._masterGain = null
-    this._enabled    = false
-    this._muted      = false
-    this._volume     = DEFAULT_VOLUME
+    this._ctx          = null
+    this._masterGain   = null
+    this._enabled      = false
+    this._muted        = false
+    this._volume       = DEFAULT_VOLUME
 
-    /** Speed-reactive wind layer (plain GainNode – no LFO). */
-    this._windGain = null
-    /** Master ship-sound gain (scales creak + rigging with ship speed). */
-    this._shipGain = null
+    /** Speed-reactive gain nodes. */
+    this._windGain  = null
+    this._shipGain  = null
 
-    /** setTimeout handle for seagull scheduling. */
-    this._gullTimeout = null
+    /** All active AudioBufferSourceNodes, keyed by layer name. */
+    this._sources = {}
   }
 
   // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   /**
-   * Create the AudioContext and start all continuous sound layers.
-   * Must be called from inside a user-gesture handler (e.g. a button click).
+   * Create the AudioContext and begin loading / playing all sound layers.
+   * Must be called from inside a user-gesture handler (e.g. a button click)
+   * to satisfy browser autoplay policies.
    *
    * @returns {boolean} false if the Web Audio API is unavailable.
    */
@@ -58,10 +72,19 @@ export class Soundscape {
     this._masterGain.gain.value = this._volume
     this._masterGain.connect(this._ctx.destination)
 
-    this._buildOcean()
-    this._buildWind()
-    this._buildShipSounds()
-    this._scheduleNextGull()
+    // Fixed-gain layers
+    const oceanGain    = this._makeGain(LAYER_GAINS.ocean)
+    const seagullsGain = this._makeGain(LAYER_GAINS.seagulls)
+
+    // Speed-reactive gain layers
+    this._windGain = this._makeGain(LAYER_GAINS.wind)
+    this._shipGain = this._makeGain(LAYER_GAINS.ship)
+
+    // Load and loop all four layers
+    this._loadAndLoop('ocean',    oceanGain)
+    this._loadAndLoop('seagulls', seagullsGain)
+    this._loadAndLoop('wind',     this._windGain)
+    this._loadAndLoop('ship',     this._shipGain)
 
     this._enabled = true
     return true
@@ -70,8 +93,10 @@ export class Soundscape {
   /** Tear down all nodes and close the AudioContext. */
   stop() {
     if (!this._enabled) return
-    clearTimeout(this._gullTimeout)
-    this._gullTimeout = null
+    for (const src of Object.values(this._sources)) {
+      try { src.stop() } catch { /* already stopped */ }
+    }
+    this._sources    = {}
     this._ctx?.close().catch(() => {})
     this._ctx        = null
     this._masterGain = null
@@ -82,232 +107,47 @@ export class Soundscape {
 
   // ── Internal helpers ───────────────────────────────────────────────────────
 
-  /**
-   * Create and immediately start a looping white-noise AudioBufferSourceNode.
-   * @param {number} seconds  Duration of the noise buffer; 3+ recommended.
-   */
-  _noiseSource(seconds = 4) {
-    const ctx  = this._ctx
-    const buf  = ctx.createBuffer(1, Math.floor(ctx.sampleRate * seconds), ctx.sampleRate)
-    fillNoise(buf)
-    const src  = ctx.createBufferSource()
-    src.buffer = buf
-    src.loop   = true
-    src.start()
-    return src
+  /** Create a GainNode connected to the master bus. */
+  _makeGain(value) {
+    const g = this._ctx.createGain()
+    g.gain.value = value
+    g.connect(this._masterGain)
+    return g
   }
 
   /**
-   * Create a GainNode whose gain AudioParam is continuously modulated by an
-   * LFO oscillator.  The resulting gain swings between (center − depth) and
-   * (center + depth).
+   * Fetch an audio file, decode it, and start it looping through the supplied
+   * destination node.  Failures are silently ignored (layer stays silent).
    *
-   * @param {number} lfoHz   LFO oscillation frequency in Hz
-   * @param {number} center  Mean (intrinsic) gain value
-   * @param {number} depth   Half-amplitude of the LFO modulation
-   * @param {'sine'|'triangle'} [shape]
-   * @returns {GainNode}
+   * @param {string}   name     Key in SOUND_PATHS / this._sources
+   * @param {AudioNode} dest    Where to route the source (a GainNode)
    */
-  _lfoGain(lfoHz, center, depth, shape = 'sine') {
-    const ctx      = this._ctx
-    const gainNode = ctx.createGain()
-    gainNode.gain.value = center
+  async _loadAndLoop(name, dest) {
+    try {
+      const response    = await fetch(SOUND_PATHS[name])
+      const arrayBuffer = await response.arrayBuffer()
+      const audioBuffer = await this._ctx.decodeAudioData(arrayBuffer)
 
-    const osc = ctx.createOscillator()
-    osc.type = shape
-    osc.frequency.value = lfoHz
+      if (!this._enabled) return  // soundscape was stopped during load
 
-    const mod = ctx.createGain()
-    mod.gain.value = depth
-    osc.connect(mod)
-    mod.connect(gainNode.gain)
-    osc.start()
+      const src    = this._ctx.createBufferSource()
+      src.buffer   = audioBuffer
+      src.loop     = true
+      src.connect(dest)
 
-    return gainNode
-  }
+      // 2-second fade-in to avoid a hard transient on first play.
+      // Use the static base gain from LAYER_GAINS so speed-reactive layers
+      // (wind/ship) don't fade in to whatever update() last scheduled.
+      const baseGain = LAYER_GAINS[name]
+      const now = this._ctx.currentTime
+      dest.gain.setValueAtTime(0, now)
+      dest.gain.linearRampToValueAtTime(baseGain, now + 2.0)
 
-  // ── Ocean ──────────────────────────────────────────────────────────────────
-
-  _buildOcean() {
-    const ctx = this._ctx
-
-    // Layer 1 – deep low-frequency rumble with slow wave-rhythm LFO
-    {
-      const src = this._noiseSource(5)
-      const lpf = ctx.createBiquadFilter()
-      lpf.type = 'lowpass'
-      lpf.frequency.value = 280
-      lpf.Q.value = 0.6
-      const g = this._lfoGain(0.28, 0.25, 0.13)
-      src.connect(lpf)
-      lpf.connect(g)
-      g.connect(this._masterGain)
+      src.start(0)
+      this._sources[name] = src
+    } catch (err) {
+      console.warn(`[Soundscape] Could not load layer "${name}":`, err)
     }
-
-    // Layer 2 – mid-range wave surge with wave-rhythm LFO (~0.4 Hz)
-    {
-      const src = this._noiseSource(6)
-      const bpf = ctx.createBiquadFilter()
-      bpf.type = 'bandpass'
-      bpf.frequency.value = 480
-      bpf.Q.value = 0.8
-      const lpf = ctx.createBiquadFilter()
-      lpf.type = 'lowpass'
-      lpf.frequency.value = 900
-      const g = this._lfoGain(0.40, 0.32, 0.18)
-      src.connect(bpf)
-      bpf.connect(lpf)
-      lpf.connect(g)
-      g.connect(this._masterGain)
-    }
-
-    // Layer 3 – high-frequency hiss / sea spray (subtle)
-    {
-      const src = this._noiseSource(3)
-      const hpf = ctx.createBiquadFilter()
-      hpf.type = 'highpass'
-      hpf.frequency.value = 3000
-      const lpf = ctx.createBiquadFilter()
-      lpf.type = 'lowpass'
-      lpf.frequency.value = 7000
-      const g = this._lfoGain(0.22, 0.07, 0.035, 'triangle')
-      src.connect(hpf)
-      hpf.connect(lpf)
-      lpf.connect(g)
-      g.connect(this._masterGain)
-    }
-  }
-
-  // ── Wind ──────────────────────────────────────────────────────────────────
-
-  _buildWind() {
-    const ctx = this._ctx
-    const src = this._noiseSource(5)
-
-    const hpf = ctx.createBiquadFilter()
-    hpf.type = 'highpass'
-    hpf.frequency.value = 2000
-
-    const lpf = ctx.createBiquadFilter()
-    lpf.type = 'lowpass'
-    lpf.frequency.value = 5000
-
-    this._windGain = ctx.createGain()
-    this._windGain.gain.value = 0.04   // quiet at rest; rises with speed
-
-    src.connect(hpf)
-    hpf.connect(lpf)
-    lpf.connect(this._windGain)
-    this._windGain.connect(this._masterGain)
-  }
-
-  // ── Ship sounds ────────────────────────────────────────────────────────────
-
-  _buildShipSounds() {
-    const ctx = this._ctx
-
-    // Master ship-sound gain – scaled by update() with ship speed
-    this._shipGain = ctx.createGain()
-    this._shipGain.gain.value = 0.5
-    this._shipGain.connect(this._masterGain)
-
-    // Hull creak – very low frequency, extremely slow LFO
-    {
-      const src = this._noiseSource(8)
-      const bpf = ctx.createBiquadFilter()
-      bpf.type = 'bandpass'
-      bpf.frequency.value = 160
-      bpf.Q.value = 3
-      const g = this._lfoGain(0.07, 0.032, 0.026, 'triangle')
-      src.connect(bpf)
-      bpf.connect(g)
-      g.connect(this._shipGain)
-    }
-
-    // Rigging hum – mid-frequency, moderate LFO for rope-tension flutter
-    {
-      const src = this._noiseSource(5)
-      const bpf = ctx.createBiquadFilter()
-      bpf.type = 'bandpass'
-      bpf.frequency.value = 1100
-      bpf.Q.value = 1.8
-      const g = this._lfoGain(0.55, 0.038, 0.022)
-      src.connect(bpf)
-      bpf.connect(g)
-      g.connect(this._shipGain)
-    }
-  }
-
-  // ── Seagulls ──────────────────────────────────────────────────────────────
-
-  _scheduleNextGull() {
-    const delay = 8000 + Math.random() * 22000  // 8 – 30 s
-    this._gullTimeout = setTimeout(() => {
-      if (!this._enabled) return
-      this._playGulls()
-      this._scheduleNextGull()
-    }, delay)
-  }
-
-  /** Emit a cluster of 1–3 gull cries spaced slightly apart. */
-  _playGulls() {
-    const numCries = 1 + (Math.random() > 0.45 ? 1 : 0) + (Math.random() > 0.78 ? 1 : 0)
-    let t = this._ctx.currentTime + 0.10
-    for (let i = 0; i < numCries; i++) {
-      this._singleCry(t)
-      t += 0.40 + Math.random() * 0.35
-    }
-  }
-
-  /**
-   * Synthesise a single descending gull cry using a sawtooth oscillator with
-   * vibrato, a pitch-slide envelope, and a bandpass filter for timbre shaping.
-   *
-   * @param {number} startAt  AudioContext time to begin the cry
-   */
-  _singleCry(startAt) {
-    const ctx      = this._ctx
-    const duration = 0.25 + Math.random() * 0.30
-
-    // Sawtooth oscillator – rich in harmonics for a raw screech quality
-    const osc = ctx.createOscillator()
-    osc.type = 'sawtooth'
-
-    // Vibrato: a secondary oscillator that modulates the pitch
-    const vib    = ctx.createOscillator()
-    vib.type     = 'sine'
-    vib.frequency.value = 7 + Math.random() * 5
-    const vibMod = ctx.createGain()
-    vibMod.gain.value = 18 + Math.random() * 18
-    vib.connect(vibMod)
-    vibMod.connect(osc.frequency)
-
-    // Pitch envelope: starts high, slides down (characteristic gull cry)
-    const f0 = 1050 + Math.random() * 600
-    osc.frequency.setValueAtTime(f0 * 1.30, startAt)
-    osc.frequency.exponentialRampToValueAtTime(f0 * 0.70, startAt + duration)
-
-    // Amplitude envelope: sharp attack, exponential decay
-    const peak = 0.14 + Math.random() * 0.06
-    const env = ctx.createGain()
-    env.gain.setValueAtTime(0, startAt)
-    env.gain.linearRampToValueAtTime(peak, startAt + 0.03)
-    env.gain.setValueAtTime(peak, startAt + duration * 0.40)
-    env.gain.exponentialRampToValueAtTime(0.001, startAt + duration)
-
-    // Bandpass filter to shape the timbre into bird-like tones
-    const bpf = ctx.createBiquadFilter()
-    bpf.type = 'bandpass'
-    bpf.frequency.value = 1700
-    bpf.Q.value = 1.4
-
-    osc.connect(bpf)
-    bpf.connect(env)
-    env.connect(this._masterGain)
-
-    const stopAt = startAt + duration + 0.05
-    vib.start(startAt); vib.stop(stopAt)
-    osc.start(startAt); osc.stop(stopAt)
   }
 
   // ── Per-frame update ───────────────────────────────────────────────────────
@@ -324,12 +164,12 @@ export class Soundscape {
 
     // Wind rises with speed (smooth time-constant 0.9 s)
     if (this._windGain) {
-      this._windGain.gain.setTargetAtTime(0.04 + s * 0.18, t, 0.9)
+      this._windGain.gain.setTargetAtTime(0.04 + s * 0.20, t, 0.9)
     }
 
-    // Ship creak and rigging increase with motion (slower time-constant 1.4 s)
+    // Ship sounds increase with motion (slower time-constant 1.4 s)
     if (this._shipGain) {
-      this._shipGain.gain.setTargetAtTime(0.5 + s * 1.0, t, 1.4)
+      this._shipGain.gain.setTargetAtTime(0.08 + s * 0.60, t, 1.4)
     }
   }
 
