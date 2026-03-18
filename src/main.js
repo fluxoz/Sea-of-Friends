@@ -4,11 +4,8 @@
 import { Game }           from './game.js'
 import { NetworkManager } from './network.js'
 import { ProximityAudio } from './audio.js'
-<<<<<<< HEAD
 import { Soundscape }     from './soundscape.js'
-=======
 import { preloadAssets }  from './assets.js'
->>>>>>> master
 
 const DEFAULT_ROOM_CODE = 'world-1'
 
