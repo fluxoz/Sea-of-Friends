@@ -8,7 +8,7 @@ import { World, waveHeight }   from './world.js'
 const SEND_RATE = 80   // ms between network position broadcasts
 
 /** World-space Y offset used to place chat bubbles above the ship's masthead. */
-const CHAT_BUBBLE_Y_OFFSET = 32
+const CHAT_BUBBLE_Y_OFFSET = 16
 
 export class Game {
   constructor(canvas) {
@@ -284,7 +284,7 @@ export class Game {
       }
 
       const worldPos = ship.getPosition().clone()
-      worldPos.y += 20            // above the masthead
+      worldPos.y += 14            // above the masthead
 
       const ndc = worldPos.project(this._camera)
       if (ndc.z > 1) {            // behind camera
