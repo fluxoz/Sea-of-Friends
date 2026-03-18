@@ -5,6 +5,7 @@ import { Game }           from './game.js'
 import { NetworkManager } from './network.js'
 import { ProximityAudio } from './audio.js'
 import { preloadAssets }  from './assets.js'
+import { LoginAmbience }  from './loginAmbience.js'
 
 const DEFAULT_ROOM_CODE = 'world-1'
 
@@ -49,6 +50,7 @@ let audio    = null
 let voicePanelOpen = false
 let activeTab      = 'all'
 const unreadCount  = { crew: 0, system: 0 }
+const loginAmbience = new LoginAmbience()
 
 /** Available slash commands (used by autocomplete hint). */
 const COMMANDS = [
@@ -84,12 +86,14 @@ async function init() {
   loadingEl.style.display  = 'none'
   nameScreen.style.display = 'flex'
   nameInput.focus()
+  loginAmbience.start()
 }
 
 // ── Join ──────────────────────────────────────────────────────────────────────
 function startGame(playerName) {
   const roomId = roomInput.value.trim() || DEFAULT_ROOM_CODE
 
+  loginAmbience.stop()
   nameScreen.style.display = 'none'
   hudEl.style.display      = 'block'
 

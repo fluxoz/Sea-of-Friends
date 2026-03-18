@@ -34,27 +34,55 @@
       background: rgba(10, 22, 40, 0.93);
       display: none; flex-direction: column;
       align-items: center; justify-content: center;
-      color: #c8a96e; z-index: 900; gap: 1.2rem;
+      color: #c8a96e; z-index: 900;
     }
-    #name-screen h2 { font-size: 2.2rem; text-shadow: 0 0 20px #c8a96e66; }
-    #name-screen p  { opacity: 0.6; font-size: 0.9rem; }
-    #name-screen label { font-size: 0.78rem; opacity: 0.55; text-transform: uppercase; letter-spacing: 0.08em; align-self: flex-start; }
+    #name-screen h2 {
+      font-size: 2.4rem; text-shadow: 0 0 24px #c8a96e88;
+      margin-bottom: 0.3rem; letter-spacing: 0.04em;
+    }
+    #name-screen .login-subtitle { opacity: 0.55; font-size: 0.85rem; margin-bottom: 1.6rem; }
+    #login-card {
+      display: flex; flex-direction: column; gap: 1rem;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(200,169,110,0.3);
+      border-radius: 10px;
+      padding: 1.8rem 2.2rem;
+      width: 300px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.55), 0 0 0 1px rgba(200,169,110,0.08);
+    }
+    .login-field {
+      display: flex; flex-direction: column; gap: 0.35rem;
+    }
+    .login-field label {
+      font-size: 0.72rem; opacity: 0.6;
+      text-transform: uppercase; letter-spacing: 0.1em;
+    }
     #name-input, #room-input {
-      padding: 0.55rem 1.2rem; font-size: 1.1rem;
-      background: rgba(255,255,255,0.08); border: 2px solid #c8a96e;
-      color: #fff; border-radius: 5px; text-align: center; outline: none;
-      width: 260px;
+      padding: 0.6rem 1rem; font-size: 1.05rem;
+      background: rgba(255,255,255,0.07); border: 1.5px solid rgba(200,169,110,0.45);
+      color: #fff; border-radius: 6px; text-align: center; outline: none;
+      font-family: inherit; width: 100%;
+      transition: border-color 0.2s, box-shadow 0.2s;
     }
-    #name-input { font-size: 1.3rem; }
-    #name-input:focus, #room-input:focus { border-color: #e8c97e; box-shadow: 0 0 10px #c8a96e44; }
+    #name-input { font-size: 1.2rem; }
+    #name-input:focus, #room-input:focus {
+      border-color: #e8c97e; box-shadow: 0 0 10px #c8a96e44;
+    }
+    .login-divider {
+      border: none; border-top: 1px solid rgba(200,169,110,0.18);
+      margin: 0.2rem 0;
+    }
     #join-btn {
-      padding: 0.55rem 2.5rem; background: #c8a96e; color: #0a1628;
-      border: none; border-radius: 5px; font-size: 1.1rem;
+      padding: 0.65rem 2.5rem; background: #c8a96e; color: #0a1628;
+      border: none; border-radius: 6px; font-size: 1.1rem;
       cursor: pointer; font-family: inherit; font-weight: bold;
-      transition: background 0.2s;
+      transition: background 0.2s, transform 0.1s;
+      width: 100%; margin-top: 0.2rem;
+      letter-spacing: 0.04em;
     }
-    #join-btn:hover { background: #e8c97e; }
-    #join-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    #join-btn:hover  { background: #e8c97e; transform: translateY(-1px); }
+    #join-btn:active { transform: translateY(0); }
+    #join-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 
     /* ── HUD ─────────────────────────────────────────────────── */
     #hud { position: fixed; inset: 0; pointer-events: none; z-index: 100; }
@@ -364,13 +392,20 @@
   </div>
 
   <div id="name-screen">
-    <h2>⚓ Enter the Sea</h2>
-    <p>P2P · No servers · DHT peer discovery</p>
-    <label for="name-input">Captain's name</label>
-    <input id="name-input" type="text" placeholder="e.g. Blackbeard" maxlength="20" autocomplete="off" />
-    <label for="room-input">Room code</label>
-    <input id="room-input" type="text" placeholder="world-1 (share with friends)" maxlength="32" autocomplete="off" />
-    <button id="join-btn">Set Sail!</button>
+    <h2>⚓ Sea of Friends</h2>
+    <p class="login-subtitle">P2P · No servers · DHT peer discovery</p>
+    <div id="login-card">
+      <div class="login-field">
+        <label for="name-input">Captain's name</label>
+        <input id="name-input" type="text" placeholder="e.g. Blackbeard" maxlength="20" autocomplete="off" />
+      </div>
+      <hr class="login-divider" />
+      <div class="login-field">
+        <label for="room-input">Room code</label>
+        <input id="room-input" type="text" placeholder="world-1 (share with friends)" maxlength="32" autocomplete="off" />
+      </div>
+      <button id="join-btn">⚓ Set Sail!</button>
+    </div>
   </div>
 
   <canvas id="canvas"></canvas>
