@@ -4,7 +4,11 @@
 import { Game }           from './game.js'
 import { NetworkManager } from './network.js'
 import { ProximityAudio } from './audio.js'
+<<<<<<< HEAD
 import { Soundscape }     from './soundscape.js'
+=======
+import { preloadAssets }  from './assets.js'
+>>>>>>> master
 
 const DEFAULT_ROOM_CODE = 'world-1'
 
@@ -65,6 +69,23 @@ const COMMANDS = [
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 async function init() {
+  // Show asset-loading progress in the loading screen
+  const loadingText = loadingEl.querySelector('p')
+  const progressBar = document.createElement('div')
+  progressBar.style.cssText = [
+    'width:260px', 'height:6px', 'background:rgba(200,169,110,0.2)',
+    'border-radius:3px', 'overflow:hidden', 'margin-top:0.5rem',
+  ].join(';')
+  const progressFill = document.createElement('div')
+  progressFill.style.cssText = 'height:100%;width:0%;background:#c8a96e;border-radius:3px;transition:width 0.15s'
+  progressBar.appendChild(progressFill)
+  loadingEl.appendChild(progressBar)
+
+  await preloadAssets(p => {
+    progressFill.style.width = `${Math.round(p * 100)}%`
+    if (loadingText) loadingText.textContent = `Loading assets… ${Math.round(p * 100)}%`
+  })
+
   game = new Game(document.getElementById('canvas'))
   game.init()
 
