@@ -4,6 +4,7 @@
 import { Game }           from './game.js'
 import { NetworkManager } from './network.js'
 import { ProximityAudio } from './audio.js'
+import { Soundscape }     from './soundscape.js'
 import { preloadAssets }  from './assets.js'
 
 const DEFAULT_ROOM_CODE = 'world-1'
@@ -41,11 +42,15 @@ const voiceLevelFill    = document.getElementById('voice-level-fill')
 const voicePttBtn       = document.getElementById('voice-ptt-btn')
 const pttIndicator      = document.getElementById('ptt-indicator')
 
+// Sound DOM refs
+const soundBtn          = document.getElementById('sound-btn')
+
 // ── Global state ──────────────────────────────────────────────────────────────
 let game     = null
 let network  = null
 let chatOpen = false
 let audio    = null
+let soundscape = null
 let voicePanelOpen = false
 let activeTab      = 'all'
 const unreadCount  = { crew: 0, system: 0 }
@@ -106,6 +111,15 @@ function startGame(playerName) {
   )
   game.setAudio(audio)
 
+  // ── Ambient soundscape ───────────────────────────────────────────────────
+  soundscape = new Soundscape()
+  if (!soundscape.start()) {
+    console.warn('[Soundscape] Web Audio API unavailable; ambient sound disabled.')
+    soundscape = null
+  }
+  game.setSoundscape(soundscape)
+  updateSoundUI()
+
   game.start(playerName, color, network)
 
   // Wire up chat network handler
@@ -121,6 +135,16 @@ function startGame(playerName) {
       game.showPlayerChat(peerId, data.t)
     }
   }
+}
+
+// ── Ambient sound ─────────────────────────────────────────────────────────────
+
+function updateSoundUI() {
+  if (!soundBtn) return
+  const muted = soundscape?.isMuted() ?? false
+  soundBtn.textContent = muted ? '🔇' : '🔊'
+  soundBtn.classList.toggle('muted', muted)
+  soundBtn.title = muted ? 'Unmute ambient sound' : 'Mute ambient sound'
 }
 
 // ── Voice chat ────────────────────────────────────────────────────────────────
@@ -453,6 +477,14 @@ chatSendBtn.addEventListener('click', sendChat)
 chatTabs.addEventListener('click', e => {
   const tab = e.target.closest('.chat-tab')
   if (tab) switchTab(tab.dataset.tab)
+})
+
+// ── Sound button event listener ───────────────────────────────────────────────
+soundBtn?.addEventListener('click', e => {
+  e.stopPropagation()
+  if (!soundscape) return
+  soundscape.setMuted(!soundscape.isMuted())
+  updateSoundUI()
 })
 
 // ── Voice chat event listeners ────────────────────────────────────────────────
