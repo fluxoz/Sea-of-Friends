@@ -68,6 +68,10 @@ export class Soundscape {
       return false
     }
 
+    // Resume context if the browser created it in a suspended state
+    // (autoplay policy may apply even inside a user-gesture handler).
+    if (this._ctx.state === 'suspended') this._ctx.resume().catch(() => {})
+
     this._masterGain = this._ctx.createGain()
     this._masterGain.gain.value = this._volume
     this._masterGain.connect(this._ctx.destination)
@@ -135,13 +139,13 @@ export class Soundscape {
       src.loop     = true
       src.connect(dest)
 
-      // 2-second fade-in to avoid a hard transient on first play.
-      // Use the static base gain from LAYER_GAINS so speed-reactive layers
-      // (wind/ship) don't fade in to whatever update() last scheduled.
+      // Fade in over ~2 seconds via the destination gain node to avoid a hard
+      // transient.  Use setTargetAtTime (same API as update()) so it doesn't
+      // conflict with the speed-reactive automation on wind/ship gain nodes.
       const baseGain = LAYER_GAINS[name]
-      const now = this._ctx.currentTime
+      const now      = this._ctx.currentTime
       dest.gain.setValueAtTime(0, now)
-      dest.gain.linearRampToValueAtTime(baseGain, now + 2.0)
+      dest.gain.setTargetAtTime(baseGain, now, 0.7)
 
       src.start(0)
       this._sources[name] = src
