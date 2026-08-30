@@ -1,21 +1,31 @@
 /**
- * assets.js – Preloads all Kenney GLB models before the game starts.
+ * assets.js – Preloads all 3-D models before the game starts.
  *
- * Assets come from three free CC0 Kenney packs bundled in public/assets/:
- *   • kenney-pirate    – ships, palms, rocks, props  (colormap texture atlas)
- *   • kenney-watercraft – sailing boats, buoys       (colormap texture atlas)
- *   • kenney-nature    – trees, rocks                (vertex colours, no external texture)
+ * Two pipelines:
+ *   • GLB via GLTFLoader — the bundled Kenney CC0 packs.
+ *   • FBX via FBXLoader — the "extra" props (community packs dropped into
+ *     the repo's assets/ folder, converted here at runtime). FBX entries can
+ *     name base-colour textures per material and are normalised to a target
+ *     size with their base sitting at y=0, so placement code stays simple.
  *
- * License: Creative Commons CC0 – https://creativecommons.org/publicdomain/zero/1.0/
+ * Loading is all-or-nothing: a failed asset fails the preload. That matters
+ * under lockstep — world generation consults hasAsset(), so every peer must
+ * hold the exact same asset set or their worlds would diverge.
  */
+import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
+import { FBXLoader } from 'three/addons/loaders/FBXLoader.js'
 
-const _loader = new GLTFLoader()
-const _cache  = new Map()
+const _gltfLoader = new GLTFLoader()
+const _fbxLoader  = new FBXLoader()
+const _texLoader  = new THREE.TextureLoader()
+const _cache      = new Map()   // key → THREE.Group ready to clone
 
 /**
  * Full list of assets to preload.
- * Each entry: [cacheKey, publicPath]
+ * GLB entries: [key, path]
+ * FBX entries: [key, path, { fbx: true, norm: maxDimension, tex: {materialNameSubstr: texPath} }]
+ *   tex '' key = fallback texture for every material.
  */
 export const ASSET_MANIFEST = [
   // ── Kenney Pirate Kit ships ───────────────────────────────────────────────
@@ -54,41 +64,139 @@ export const ASSET_MANIFEST = [
   ['rock-large-c',            '/assets/kenney-nature/rock_largeC.glb'],
   ['rock-tall-a',             '/assets/kenney-nature/rock_tallA.glb'],
   ['rock-tall-b',             '/assets/kenney-nature/rock_tallB.glb'],
+
+  // ── Extra props (community packs from assets/, see ASSETS-NOTE in README) ─
+  ['x-chest',     '/assets/extra/chest2.fbx',
+    { fbx: true, norm: 3.4,  tex: { '': '/assets/extra/chest2.png' } }],
+  ['x-barrel',    '/assets/extra/barrel2.fbx',
+    { fbx: true, norm: 2.4,  tex: { '': '/assets/extra/barrelbox.png' } }],
+  ['x-box',       '/assets/extra/box2.fbx',
+    { fbx: true, norm: 2.2,  tex: { '': '/assets/extra/barrelbox.png' } }],
+  ['x-coin',      '/assets/extra/coin.fbx',
+    { fbx: true, norm: 1.0,  tex: { '': '/assets/extra/coin.png' } }],
+  ['x-ballista',  '/assets/extra/ballista.fbx',
+    { fbx: true, norm: 4.2,  tex: { '': '/assets/extra/ballista.png' } }],
+  ['x-farmhouse', '/assets/extra/farmhouse.fbx',
+    { fbx: true, norm: 16, tex: {
+      house: '/assets/extra/farmhouse-house.png',
+      roof: '/assets/extra/farmhouse-roof.png',
+      wood: '/assets/extra/farmhouse-wood.png',
+      boxes: '/assets/extra/farmhouse-boxes.png',
+      '': '/assets/extra/farmhouse-l1.png',
+    } }],
+  ['x-well',      '/assets/extra/well.fbx',
+    { fbx: true, norm: 4.5 }],
+  ['x-coconut1',  '/assets/extra/coconut1.fbx',
+    { fbx: true, norm: 11, tex: { '': '/assets/extra/coconut.png' } }],
+  ['x-coconut2',  '/assets/extra/coconut2.fbx',
+    { fbx: true, norm: 10, tex: { '': '/assets/extra/coconut.png' } }],
+  ['x-banana',    '/assets/extra/banana.fbx',
+    { fbx: true, norm: 7.5, tex: { '': '/assets/extra/banana.png' } }],
+  ['x-smallship', '/assets/extra/smallship.fbx',
+    { fbx: true, norm: 9, tex: { '': '/assets/extra/smallship-pal.png' } }],
+  // Blender-converted GLBs (see ASSETS-NOTE); normalised like the FBX props
+  ['x-piratebase', '/assets/extra/pirate-base.glb', { norm: 26 }],
+  ['x-treasure',   '/assets/extra/treasure.glb',    { norm: 3.2 }],
+  ['x-windmill',   '/assets/extra/windmill.glb',    { norm: 20 }],
 ]
+
+function loadTexture(path) {
+  return new Promise((resolve, reject) => {
+    _texLoader.load(path, tex => {
+      tex.colorSpace = THREE.SRGBColorSpace
+      resolve(tex)
+    }, undefined, reject)
+  })
+}
+
+/** Scale to a target max dimension, centre horizontally, base at y=0. */
+function normalizeAndGround(obj, norm) {
+  const box  = new THREE.Box3().setFromObject(obj)
+  const size = box.getSize(new THREE.Vector3())
+  const maxDim = Math.max(size.x, size.y, size.z) || 1
+  obj.scale.setScalar((norm ?? 3) / maxDim)
+  const box2   = new THREE.Box3().setFromObject(obj)
+  const center = box2.getCenter(new THREE.Vector3())
+  const wrap = new THREE.Group()
+  obj.position.set(-center.x, -box2.min.y, -center.z)
+  wrap.add(obj)
+  return wrap
+}
+
+/** Load one FBX entry: texture it, normalise its size, ground it at y=0. */
+async function loadFbx(path, opts) {
+  const obj = await _fbxLoader.loadAsync(path)
+
+  // Per-material base-colour textures, matched by material name substring
+  const texMap = opts.tex ?? null
+  const loaded = {}
+  if (texMap) {
+    for (const [key, texPath] of Object.entries(texMap)) {
+      loaded[key] = await loadTexture(texPath)
+    }
+  }
+
+  obj.traverse(child => {
+    if (!child.isMesh) return
+    child.castShadow = true
+    const pick = mat => {
+      if (!texMap) return mat   // keep whatever the FBX carries (e.g. colours)
+      const name = (mat?.name ?? '').toLowerCase()
+      let tex = loaded['']
+      for (const key of Object.keys(loaded)) {
+        if (key && name.includes(key)) { tex = loaded[key]; break }
+      }
+      return new THREE.MeshStandardMaterial({
+        map: tex ?? null,
+        color: tex ? 0xffffff : (mat?.color ?? 0x999999),
+        roughness: 0.85,
+        metalness: 0,
+      })
+    }
+    child.material = Array.isArray(child.material)
+      ? child.material.map(pick)
+      : pick(child.material)
+  })
+
+  return normalizeAndGround(obj, opts.norm)
+}
 
 /**
  * Preload every asset listed in ASSET_MANIFEST.
- * @param {(progress: number) => void} [onProgress]  called with 0..1 as each file loads
+ * @param {(progress: number) => void} [onProgress]
  */
 export async function preloadAssets(onProgress) {
   const total  = ASSET_MANIFEST.length
   let   loaded = 0
 
-  for (const [name, path] of ASSET_MANIFEST) {
-    const gltf = await _loader.loadAsync(path)
-
-    // Enable shadow-casting/receiving on all meshes
-    gltf.scene.traverse(child => {
-      if (child.isMesh) {
-        child.castShadow    = true
-        child.receiveShadow = true
-      }
-    })
-
-    _cache.set(name, gltf)
+  for (const [name, path, opts] of ASSET_MANIFEST) {
+    if (opts?.fbx) {
+      _cache.set(name, await loadFbx(path, opts))
+    } else {
+      const gltf = await _gltfLoader.loadAsync(path)
+      gltf.scene.traverse(child => {
+        if (child.isMesh) {
+          child.castShadow    = true
+          child.receiveShadow = true
+        }
+      })
+      _cache.set(name, opts?.norm
+        ? normalizeAndGround(gltf.scene, opts.norm)
+        : gltf.scene)
+    }
     loaded++
     onProgress?.(loaded / total)
   }
 }
 
 /**
- * Deep-clone a loaded asset's scene and return the cloned THREE.Group.
+ * Deep-clone a loaded asset and return the cloned THREE.Group.
  * Throws if the asset hasn't been preloaded yet.
  */
 export function cloneAsset(name) {
-  const gltf = _cache.get(name)
-  if (!gltf) throw new Error(`Asset not loaded: "${name}"`)
-  return gltf.scene.clone(true)
+  const root = _cache.get(name)
+  if (!root) throw new Error(`Asset not loaded: "${name}"`)
+  return root.clone(true)
 }
 
 /** Returns true if the named asset is available in the cache. */

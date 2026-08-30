@@ -40,6 +40,9 @@ const voiceNearby       = document.getElementById('voice-nearby')
 const voiceLevelFill    = document.getElementById('voice-level-fill')
 const voicePttBtn       = document.getElementById('voice-ptt-btn')
 const pttIndicator      = document.getElementById('ptt-indicator')
+const voiceChannelInput = document.getElementById('voice-channel-input')
+const voiceChannelBtn   = document.getElementById('voice-channel-btn')
+const voiceChannelStatus = document.getElementById('voice-channel-status')
 
 // ── Global state ──────────────────────────────────────────────────────────────
 let game     = null
@@ -50,6 +53,16 @@ let voicePanelOpen = false
 let activeTab      = 'all'
 const unreadCount  = { crew: 0, system: 0 }
 
+// ── Settings (render/audio side only — never simulation state) ────────────────
+const SETTINGS_KEY = 'sof-settings'
+const settings = { fps: false, shadows: 'high', sfxVolume: 1 }
+try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}')) } catch { /* fresh */ }
+
+function applyAndSaveSettings() {
+  game?.applySettings(settings)
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)) } catch { /* private mode */ }
+}
+
 /** Available slash commands (used by autocomplete hint). */
 const COMMANDS = [
   { cmd: '/help',  args: '',          desc: 'Show available commands' },
@@ -57,6 +70,7 @@ const COMMANDS = [
   { cmd: '/name',  args: '<newname>', desc: 'Change your captain name' },
   { cmd: '/me',    args: '<action>',  desc: 'Emote an action' },
   { cmd: '/roll',  args: '[max]',     desc: 'Roll dice (default d100)' },
+  { cmd: '/channel', args: '<name|off>', desc: 'Join/leave a private crew voice channel' },
 ]
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
@@ -80,17 +94,143 @@ async function init() {
 
   game = new Game(document.getElementById('canvas'))
   game.init()
+  game.applySettings(settings)
 
   loadingEl.style.display  = 'none'
   nameScreen.style.display = 'flex'
   nameInput.focus()
 }
 
+// ── Settings panel ────────────────────────────────────────────────────────────
+{
+  const btn     = document.getElementById('settings-btn')
+  const panel   = document.getElementById('settings-panel')
+  const fpsBox  = document.getElementById('set-fps')
+  const shadows = document.getElementById('set-shadows')
+  const sfxVol  = document.getElementById('set-sfx')
+
+  fpsBox.checked  = settings.fps
+  shadows.value   = settings.shadows
+  sfxVol.value    = Math.round(settings.sfxVolume * 100)
+
+  btn.addEventListener('click', () => panel.classList.toggle('open'))
+  document.addEventListener('click', e => {
+    if (panel.classList.contains('open') && !panel.contains(e.target) && e.target !== btn) {
+      panel.classList.remove('open')
+    }
+  })
+
+  fpsBox.addEventListener('change', () => { settings.fps = fpsBox.checked; applyAndSaveSettings() })
+  shadows.addEventListener('change', () => { settings.shadows = shadows.value; applyAndSaveSettings() })
+  sfxVol.addEventListener('input', () => { settings.sfxVolume = sfxVol.value / 100; applyAndSaveSettings() })
+}
+
+// ── Menu burn-up transition ───────────────────────────────────────────────────
+
+/**
+ * Set the scroll alight: an animated mask consumes the panel from the bottom
+ * while a particle canvas renders the fire front — flames, embers, smoke.
+ */
+function burnMenu(done) {
+  const panel = document.getElementById('join-panel')
+  const fading = ['title', 'tagline', 'features', 'join-hint']
+    .map(id => document.getElementById(id)).filter(Boolean)
+  const rect = panel.getBoundingClientRect()
+
+  const cv = document.createElement('canvas')
+  cv.width = window.innerWidth
+  cv.height = window.innerHeight
+  cv.style.cssText = 'position:fixed;inset:0;z-index:960;pointer-events:none'
+  document.body.appendChild(cv)
+  const ctx = cv.getContext('2d')
+
+  try { game?._sfx?.burn() } catch {}
+
+  const parts = []
+  const DUR = 1500
+  const t0 = performance.now()
+  let last = t0
+
+  function frame(now) {
+    const dt = Math.min((now - last) / 1000, 0.05)
+    last = now
+    const k = Math.min(1, (now - t0) / DUR)
+    // Burn line climbs the panel bottom → top
+    const burnY = rect.bottom - k * (rect.height + 40)
+    const pct = k * 130 - 15
+    const mask = `linear-gradient(to top, transparent ${pct}%, black ${pct + 14}%)`
+    panel.style.webkitMaskImage = mask
+    panel.style.maskImage = mask
+    for (const el of fading) el.style.opacity = String(Math.max(0, 1 - k * 1.4))
+
+    // Feed the fire along the burn front
+    if (k < 1) {
+      for (let i = 0; i < 16; i++) {
+        const x = rect.left + Math.random() * rect.width
+        const smoke = Math.random() < 0.25
+        parts.push({
+          x, y: burnY + (Math.random() - 0.5) * 10,
+          vx: (Math.random() - 0.5) * 30,
+          vy: -(30 + Math.random() * (smoke ? 40 : 110)),
+          life: smoke ? 0.9 + Math.random() * 0.5 : 0.35 + Math.random() * 0.45,
+          age: 0,
+          size: smoke ? 8 + Math.random() * 10 : 3 + Math.random() * 6,
+          smoke,
+        })
+      }
+    }
+
+    ctx.clearRect(0, 0, cv.width, cv.height)
+    // Ember glow along the front
+    if (k < 1) {
+      ctx.save()
+      ctx.globalCompositeOperation = 'lighter'
+      const grad = ctx.createLinearGradient(0, burnY - 18, 0, burnY + 12)
+      grad.addColorStop(0, 'rgba(255,150,40,0)')
+      grad.addColorStop(0.7, 'rgba(255,120,20,0.55)')
+      grad.addColorStop(1, 'rgba(255,60,10,0)')
+      ctx.fillStyle = grad
+      ctx.fillRect(rect.left - 10, burnY - 18, rect.width + 20, 30)
+      ctx.restore()
+    }
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const p = parts[i]
+      p.age += dt
+      if (p.age >= p.life) { parts.splice(i, 1); continue }
+      p.x += p.vx * dt
+      p.y += p.vy * dt
+      const t = p.age / p.life
+      ctx.globalCompositeOperation = p.smoke ? 'source-over' : 'lighter'
+      if (p.smoke) {
+        ctx.fillStyle = `rgba(70,60,55,${0.3 * (1 - t)})`
+      } else {
+        const r = 255, g = Math.round(200 - t * 160), b = Math.round(80 - t * 70)
+        ctx.fillStyle = `rgba(${r},${g},${b},${0.85 * (1 - t)})`
+      }
+      ctx.beginPath()
+      ctx.arc(p.x, p.y, p.size * (p.smoke ? 1 + t : 1 - t * 0.5), 0, Math.PI * 2)
+      ctx.fill()
+    }
+
+    if (k < 1 || parts.length) requestAnimationFrame(frame)
+    else {
+      cv.remove()
+      // Reset for the next visit to the menu (quit button)
+      panel.style.webkitMaskImage = panel.style.maskImage = ''
+      for (const el of fading) el.style.opacity = ''
+      done()
+    }
+  }
+  requestAnimationFrame(frame)
+}
+
 // ── Join ──────────────────────────────────────────────────────────────────────
 function startGame(playerName) {
   const roomId = roomInput.value.trim() || DEFAULT_ROOM_CODE
+  const shipClass = document.querySelector('.ship-card.selected')?.dataset.cls || 'frigate'
 
-  nameScreen.style.display = 'none'
+  // The scroll burns away while the game boots underneath it
+  burnMenu(() => { nameScreen.style.display = 'none' })
   hudEl.style.display      = 'block'
 
   const color = Math.random() * 0xffffff | 0
@@ -106,7 +246,13 @@ function startGame(playerName) {
   )
   game.setAudio(audio)
 
-  game.start(playerName, color, network)
+  // Battle notices (kills, sinkings) go to the system chat channel
+  game.onSystemMessage = addSystemMessage
+
+  game.start(playerName, color, network, shipClass)
+
+  // Debug handle (used by smoke tests; handy in the browser console too)
+  window.__game = game
 
   // Wire up chat network handler
   network.onChat = (peerId, data) => {
@@ -130,8 +276,8 @@ function updateVoiceUI() {
   if (audio.isEnabled()) {
     voiceBtn.classList.add('active')
     voiceBtn.title = 'Voice chat – click to manage'
-    const pttTalking = audio.isPttMode() && audio.isPttHeld()
-    voiceBtn.textContent = audio.isMuted() ? '🔇' : (pttTalking ? '📢' : '🎤')
+    const talking = audio.isTransmitting()
+    voiceBtn.textContent = audio.isMuted() ? '🔇' : (talking ? '📢' : '🎤')
     if (audio.isMuted()) voiceBtn.classList.add('muted')
     else voiceBtn.classList.remove('muted')
     voiceMuteBtn.textContent = audio.isMuted() ? '🔇 Mic muted' : '🎤 Mic on'
@@ -282,6 +428,13 @@ function handleCommand(raw) {
       network.sendEmoteMessage(action)
       addEmoteMessage(myName, action)
       game.showLocalChat(`* ${myName} ${action} *`, true)
+      break
+    }
+
+    case 'channel': {
+      const arg = args.join(' ').trim().slice(0, 24)
+      if (!arg) { addSystemMessage('Usage: /channel <name>  or  /channel off'); break }
+      setVoiceChannel(arg.toLowerCase() === 'off' ? '' : arg)
       break
     }
 
@@ -488,6 +641,94 @@ document.addEventListener('click', e => {
   }
 })
 
+// ── Quit to menu ──────────────────────────────────────────────────────────────
+
+const quitBtn = document.getElementById('quit-btn')
+let quitArmTimer = null
+
+function quitToMenu() {
+  // Order matters: stop the sim first, then leave the room (the crew's
+  // departure protocol drops our ship — and our purse — deterministically)
+  if (audio) { try { audio.disable() } catch {} }
+  game.stop()
+  if (network) { try { network.leave() } catch {} }
+  network = null
+  audio   = null
+
+  closeChat()
+  while (chatMessages.firstChild) chatMessages.removeChild(chatMessages.firstChild)
+  unreadCount.crew = 0; unreadCount.system = 0
+  voicePanelOpen = false
+  voicePanel.classList.remove('open')
+
+  hudEl.style.display      = 'none'
+  nameScreen.style.display = 'flex'
+  joinBtn.disabled = false
+  quitBtn.classList.remove('armed')
+  quitBtn.textContent = '⏏'
+  nameInput.focus()
+}
+
+quitBtn?.addEventListener('click', e => {
+  e.stopPropagation()
+  if (!network) return
+  if (!quitBtn.classList.contains('armed')) {
+    // First click arms; second click within 3 s abandons ship
+    quitBtn.classList.add('armed')
+    quitBtn.textContent = 'Abandon ship?'
+    clearTimeout(quitArmTimer)
+    quitArmTimer = setTimeout(() => {
+      quitBtn.classList.remove('armed')
+      quitBtn.textContent = '⏏'
+    }, 3000)
+    return
+  }
+  clearTimeout(quitArmTimer)
+  quitToMenu()
+})
+
+// ── Crew voice channel ────────────────────────────────────────────────────────
+
+function setVoiceChannel(name) {
+  if (!network) return
+  network.setVoiceChannel(name)
+  if (name) {
+    addSystemMessage(`🔊 Joined crew channel "${name}" — anyone announcing the same name hears you at any distance`)
+    if (voiceChannelInput) voiceChannelInput.value = name
+    if (voiceChannelBtn) voiceChannelBtn.textContent = 'Leave'
+  } else {
+    addSystemMessage('🔇 Left the crew channel — proximity voice only')
+    if (voiceChannelBtn) voiceChannelBtn.textContent = 'Join'
+  }
+  updateChannelStatus()
+}
+
+function updateChannelStatus() {
+  if (!voiceChannelStatus || !network) return
+  const vc = network.getLocalVc()
+  if (!vc) { voiceChannelStatus.textContent = ''; return }
+  let members = 0
+  network.peers.forEach(p => { if (p.vc === vc) members++ })
+  voiceChannelStatus.textContent =
+    `⚓ In "${vc}" with ${members} other${members !== 1 ? 's' : ''}`
+}
+
+voiceChannelBtn?.addEventListener('click', () => {
+  if (!network) return
+  if (network.getLocalVc()) setVoiceChannel('')
+  else {
+    const name = voiceChannelInput.value.trim().slice(0, 24)
+    if (name) setVoiceChannel(name)
+  }
+})
+
+voiceChannelInput?.addEventListener('keydown', e => {
+  e.stopPropagation()
+  if (e.key === 'Enter') voiceChannelBtn?.click()
+})
+
+setInterval(updateChannelStatus, 2000)
+
 // ── PTT key (V) ───────────────────────────────────────────────────────────────
 document.addEventListener('keydown', e => {
   if (e.code !== 'KeyV') return
@@ -543,6 +784,14 @@ setInterval(() => {
     pttIndicator.classList.toggle('active', audio.isPttMode() && audio.isPttHeld())
   }
 }, 50)
+
+// Ship class selection cards
+document.getElementById('ship-select')?.addEventListener('click', e => {
+  const card = e.target.closest('.ship-card')
+  if (!card) return
+  document.querySelectorAll('.ship-card').forEach(c => c.classList.remove('selected'))
+  card.classList.add('selected')
+})
 
 // ── Go ────────────────────────────────────────────────────────────────────────
 init()
