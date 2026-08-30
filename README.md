@@ -9,7 +9,7 @@ A Sea of Thieves-esque browser battle sandbox where players sail the same ocean,
 |---|---|
 | **3D rendering** | [Three.js](https://threejs.org/) – GPU-shader ocean, procedural sky, fully rigged ships |
 | **Peer discovery** | [Trystero](https://github.com/dmotz/trystero) `torrent` strategy – BitTorrent DHT & WebTorrent tracker network |
-| **P2P transport** | WebRTC DataChannels – binary data, ~80 ms position updates |
+| **P2P transport** | WebRTC DataChannels – reliable lane for bootstrap/cmds, unreliable lane for 20 Hz inputs |
 | **NAT traversal** | WebRTC ICE / STUN (Google + Cloudflare public servers) |
 | **IPv6** | Supported natively by WebRTC if the browser & network permit |
 
@@ -243,7 +243,11 @@ RTS multiplayer, adapted to the open sea:
 
 - **Only inputs cross the network.** Twenty times a second every peer
   broadcasts a tiny packet — rudder, sail trim, fire + aim. Nobody ever
-  sends positions, damage, or gold.
+  sends positions, damage, or gold. Inputs ride an **unreliable, unordered
+  datachannel** (no head-of-line blocking from retransmits) with each packet
+  carrying the last few inputs redundantly, so lost datagrams simply don't
+  matter; roster commands and channel-less peers fall back to the reliable
+  lane.
 - **Every peer simulates everything.** Ships, ghost fleet, forts, power-ups,
   treasure, damage rolls — one shared state machine (`sim.js`) advanced with
   a fixed 20 Hz timestep. All simulation math goes through `dmath.js`, a
@@ -276,12 +280,39 @@ RTS multiplayer, adapted to the open sea:
   of the lowest-id peer so they land on the same tick everywhere. When
   someone disconnects, the crew agrees on their final input tick, relays
   anything missing, and their ship (and purse!) goes down deterministically.
+- **Partitions heal.** A network split leaves two live crews that ejected
+  each other; when connectivity returns their state hashes disagree, and
+  after a persistent streak exactly one side yields — the smaller crew (or
+  on a tie, the one whose lowest peer id sorts higher) demotes and rejoins
+  from the winner's snapshot, like any late joiner.
+- **The sea persists.** Every ten seconds the confirmed world state is
+  saved to localStorage per room code. When you sail into a room and nobody
+  answers, your saved sea resumes where it left off — forts, treasure,
+  tick, and your own purse included. The last captain ashore keeps the
+  world.
 - **Nobody can hold the sea hostage.** Prediction rides through hiccups up
   to 2 s. Past that the screen holds ("⚓ Waiting for the crew…"), and a peer
   silent for ~6 s more is ejected through the same departure protocol as a
   disconnect — the ejected peer detects its own departure, demotes, and
   rejoins automatically from a fresh snapshot when it recovers.
   Backgrounded tabs keep ticking via a timer and never trigger any of this.
+
+### ⚙ CI
+
+Every push runs a **determinism gate** on GitHub Actions: two real browser
+peers over a local tracker with 150 ms artificial input lag, sailing and
+firing for 30 seconds under constant prediction + rollback — then every
+overlapping state hash must match and the desync tripwire must stay silent.
+One careless `Math.random()` in sim code fails CI, not a crew at sea.
+
+### 🌐 Hosting
+
+The game is static files + P2P — hosting is just a CDN. Production lives on
+Cloudflare Pages at **https://sea-of-friends.com** (deploy with
+`npx wrangler pages deploy dist --project-name sea-of-friends`). Peer
+discovery uses public BitTorrent trackers and NAT traversal uses public
+STUN only — zero servers, zero running cost. LAN/offline crews can point at
+their own tracker with `?relays=ws://host:port`.
 
 ### 🎤 Voice
 
