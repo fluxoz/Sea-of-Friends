@@ -22,12 +22,20 @@ console.log(`tracker on ws://localhost:${TRACKER_PORT}`)
 const vite = spawn('npx', ['vite', '--port', String(VITE_PORT), '--strictPort'], {
   stdio: ['ignore', 'pipe', 'pipe'],
 })
-await new Promise((res, rej) => {
-  const timer = setTimeout(() => rej(new Error('vite did not start')), 30000)
-  vite.stdout.on('data', d => {
-    if (String(d).includes('Local:')) { clearTimeout(timer); res() }
-  })
-})
+vite.stderr.on('data', d => process.stderr.write('[vite] ' + d))
+// Don't parse the banner — poll the port until it answers
+{
+  const deadline = Date.now() + 60000
+  let up = false
+  while (Date.now() < deadline) {
+    try {
+      const r = await fetch(`http://localhost:${VITE_PORT}/`)
+      if (r.ok) { up = true; break }
+    } catch { /* not yet */ }
+    await new Promise(r => setTimeout(r, 500))
+  }
+  if (!up) throw new Error('vite did not start within 60s')
+}
 console.log(`vite on http://localhost:${VITE_PORT}`)
 
 const failures = []
