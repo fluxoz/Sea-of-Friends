@@ -50,8 +50,14 @@ const RELAYS = encodeURIComponent(`ws://localhost:${TRACKER_PORT}`)
 const mk = async name => {
   const page = await (await browser.newContext({ viewport: { width: 1024, height: 640 } })).newPage()
   page.on('pageerror', e => failures.push(`pageerror[${name}]: ${e.message.slice(0, 200)}`))
+  page.on('console', m => {
+    if (m.type() === 'error' && !/tracker|WebSocket|wss|ERR_|404/i.test(m.text())) {
+      console.log(`console[${name}]:`, m.text().slice(0, 160))
+    }
+  })
   await page.goto(`http://localhost:${VITE_PORT}/?relays=${RELAYS}&lagms=150`)
-  await page.waitForSelector('#join-btn', { timeout: 30000 })
+  // Asset preload (30+ models) is slow on a 2-core software-GL runner
+  await page.waitForSelector('#join-btn', { state: 'visible', timeout: 180000 })
   await page.fill('#name-input', name)
   await page.fill('#room-input', room)
   await page.click('#join-btn')
