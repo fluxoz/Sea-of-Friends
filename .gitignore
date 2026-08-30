@@ -6,3 +6,6 @@ dist/
 # Nix build result symlinks
 result
 result-*
+assets/
+.direnv/
+shadowing_issue.png

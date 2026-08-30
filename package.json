@@ -24,6 +24,8 @@
     "trystero": "^0.22.0"
   },
   "devDependencies": {
+    "bittorrent-tracker": "^11.2.3",
+    "playwright": "^1.62.1",
     "vite": "^8.0.0"
   }
 }

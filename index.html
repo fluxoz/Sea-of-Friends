@@ -4,6 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Sea of Friends</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Pirata+One&family=IM+Fell+English:ital@0;1&display=swap" rel="stylesheet" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -12,6 +15,10 @@
       overflow: hidden;
       font-family: 'Georgia', serif;
       user-select: none;
+      cursor: url('/assets/extra/quill-cursor.png') 3 29, auto;
+    }
+    button, .ship-card, input, select, .chat-tab, .cmd-hint-item {
+      cursor: url('/assets/extra/quill-cursor.png') 3 29, pointer;
     }
 
     #canvas { display: block; width: 100vw; height: 100vh; }
@@ -19,42 +26,170 @@
     /* ── Loading ─────────────────────────────────────────────── */
     #loading {
       position: fixed; inset: 0;
-      background: #0a1628;
+      background:
+        radial-gradient(ellipse at 50% 30%, rgba(30, 50, 80, 0.55), rgba(4, 10, 20, 0.95) 75%),
+        #0a1628;
       display: flex; flex-direction: column;
       align-items: center; justify-content: center;
       color: #c8a96e; z-index: 1000;
       gap: 1rem;
     }
-    #loading h1 { font-size: 3.5rem; text-shadow: 0 0 30px #c8a96e88; letter-spacing: 0.05em; }
-    #loading p  { opacity: 0.65; font-size: 1.1rem; }
+    #loading h1 {
+      font-family: 'Pirata One', 'Georgia', serif;
+      font-weight: 400;
+      font-size: clamp(3.5rem, 9vw, 6rem);
+      letter-spacing: 0.04em;
+      background: linear-gradient(180deg, #f5dfa5 0%, #e0b96a 45%, #9c7838 100%);
+      -webkit-background-clip: text; background-clip: text;
+      -webkit-text-fill-color: transparent;
+      filter: drop-shadow(0 3px 12px rgba(0,0,0,0.7)) drop-shadow(0 0 26px rgba(232,201,126,0.35));
+    }
+    #loading p  { opacity: 0.75; font-size: 1.05rem; font-family: 'IM Fell English', Georgia, serif; font-style: italic; }
 
-    /* ── Name screen ─────────────────────────────────────────── */
+    /* ── Name screen ("homepage") ────────────────────────────── */
+    /* The live ocean renders behind this — keep it translucent */
     #name-screen {
       position: fixed; inset: 0;
-      background: rgba(10, 22, 40, 0.93);
+      background: radial-gradient(ellipse at 50% 42%,
+        rgba(6, 14, 26, 0.18) 0%, rgba(4, 10, 20, 0.62) 78%, rgba(2, 6, 14, 0.85) 100%);
       display: none; flex-direction: column;
       align-items: center; justify-content: center;
-      color: #c8a96e; z-index: 900; gap: 1.2rem;
+      color: #c8a96e; z-index: 900; gap: 1.1rem;
+      text-align: center;
     }
-    #name-screen h2 { font-size: 2.2rem; text-shadow: 0 0 20px #c8a96e66; }
-    #name-screen p  { opacity: 0.6; font-size: 0.9rem; }
-    #name-screen label { font-size: 0.78rem; opacity: 0.55; text-transform: uppercase; letter-spacing: 0.08em; align-self: flex-start; }
+    #title {
+      font-family: 'Pirata One', 'Georgia', serif;
+      font-weight: 400;
+      font-size: clamp(3.8rem, 10vw, 6.5rem);
+      line-height: 1;
+      letter-spacing: 0.04em;
+      background: linear-gradient(180deg, #f7e3ac 0%, #e2bb6c 45%, #96742f 100%);
+      -webkit-background-clip: text; background-clip: text;
+      -webkit-text-fill-color: transparent;
+      filter: drop-shadow(0 4px 14px rgba(0,0,0,0.85)) drop-shadow(0 0 30px rgba(232,201,126,0.3));
+      margin-bottom: -0.4rem;
+      animation: title-bob 6s ease-in-out infinite;
+    }
+    @keyframes title-bob {
+      0%, 100% { transform: translateY(0) rotate(-0.6deg); }
+      50%      { transform: translateY(-7px) rotate(0.6deg); }
+    }
+    #tagline {
+      font-family: 'IM Fell English', Georgia, serif;
+      font-style: italic;
+      font-size: clamp(0.95rem, 2.2vw, 1.2rem);
+      color: #e6d3a3;
+      text-shadow: 0 2px 8px rgba(0,0,0,0.9);
+      opacity: 0.95;
+    }
+    #tagline .skull { font-style: normal; opacity: 0.9; }
+
+    /* The boarding card: an unrolled parchment scroll */
+    #join-panel {
+      position: relative;
+      display: flex; flex-direction: column; gap: 0.7rem;
+      padding: 3.4rem 3.4rem 3.8rem;
+      margin: 0.4rem 0;
+      color: #4a3018;
+      background: url('/assets/extra/scroll.svg');
+      background-size: 100% 100%;
+      filter: drop-shadow(0 16px 30px rgba(0, 0, 0, 0.55));
+    }
+    /* (rolled ends are part of the scroll artwork) */
+    #join-panel label {
+      font-size: 0.72rem; color: #6e532e;
+      text-transform: uppercase; letter-spacing: 0.16em;
+      align-self: flex-start;
+      font-family: 'IM Fell English', Georgia, serif;
+    }
     #name-input, #room-input {
-      padding: 0.55rem 1.2rem; font-size: 1.1rem;
-      background: rgba(255,255,255,0.08); border: 2px solid #c8a96e;
-      color: #fff; border-radius: 5px; text-align: center; outline: none;
-      width: 260px;
+      padding: 0.5rem 1.2rem; font-size: 1.05rem;
+      background: rgba(255, 250, 235, 0.35);
+      border: none;
+      border-bottom: 2px solid rgba(90, 64, 32, 0.65);
+      color: #3a2812; border-radius: 3px 3px 0 0; text-align: center; outline: none;
+      width: 290px;
+      font-family: 'IM Fell English', Georgia, serif;
+      transition: border-color 0.2s, background 0.2s;
     }
     #name-input { font-size: 1.3rem; }
-    #name-input:focus, #room-input:focus { border-color: #e8c97e; box-shadow: 0 0 10px #c8a96e44; }
-    #join-btn {
-      padding: 0.55rem 2.5rem; background: #c8a96e; color: #0a1628;
-      border: none; border-radius: 5px; font-size: 1.1rem;
-      cursor: pointer; font-family: inherit; font-weight: bold;
-      transition: background 0.2s;
+    #name-input::placeholder, #room-input::placeholder { color: rgba(90, 64, 32, 0.4); }
+    #name-input:focus, #room-input:focus {
+      border-bottom-color: #8a2f22;
+      background: rgba(255, 250, 235, 0.6);
     }
-    #join-btn:hover { background: #e8c97e; }
-    #join-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    #join-btn {
+      margin-top: 0.5rem;
+      align-self: center;
+      padding: 0.6rem 2.4rem;
+      background: radial-gradient(ellipse at 35% 30%, #b8483a 0%, #8a2f22 55%, #641f16 100%);
+      color: #f5dfa5;
+      border: 2px solid #571a12; border-radius: 10px;
+      font-size: 1.35rem;
+      font-family: 'Pirata One', Georgia, serif;
+      letter-spacing: 0.08em;
+      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
+      box-shadow: 0 5px 14px rgba(0, 0, 0, 0.45), inset 0 2px 6px rgba(255, 200, 160, 0.35);
+      transition: transform 0.15s, box-shadow 0.15s, filter 0.15s;
+    }
+    #join-btn:hover {
+      filter: brightness(1.15);
+      transform: translateY(-2px);
+      box-shadow: 0 9px 20px rgba(0, 0, 0, 0.5), inset 0 2px 6px rgba(255, 200, 160, 0.35);
+    }
+    #join-btn:active { transform: translateY(0); }
+    #join-btn:disabled { opacity: 0.5; transform: none; filter: none; }
+
+    /* Ship class selector */
+    #ship-select {
+      display: flex; gap: 0.5rem; justify-content: center;
+    }
+    .ship-card {
+      flex: 1;
+      padding: 0.5rem 0.4rem;
+      background: rgba(255, 250, 235, 0.25);
+      border: 1px solid rgba(90, 64, 32, 0.45);
+      border-radius: 4px;
+      transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+      text-align: center;
+    }
+    .ship-card:hover { border-color: rgba(90, 64, 32, 0.85); }
+    .ship-card.selected {
+      border-color: #8a2f22;
+      background: rgba(184, 72, 58, 0.12);
+      box-shadow: inset 0 0 0 1px #8a2f22, 0 2px 8px rgba(90, 30, 20, 0.25);
+    }
+    .ship-card .ship-name {
+      font-family: 'Pirata One', Georgia, serif;
+      font-size: 1.05rem; color: #5a3a18; letter-spacing: 0.05em;
+    }
+    .ship-card.selected .ship-name { color: #8a2f22; }
+    .ship-card .ship-desc {
+      font-size: 0.62rem; color: #6e532e; line-height: 1.5;
+    }
+
+    /* Feature chips */
+    #features {
+      display: flex; flex-wrap: wrap; justify-content: center;
+      gap: 0.45rem; max-width: 620px;
+      margin-top: 0.4rem;
+    }
+    .feature-chip {
+      font-size: 0.74rem;
+      padding: 0.28rem 0.8rem;
+      color: #d9c491;
+      background: rgba(10, 16, 28, 0.6);
+      border: 1px solid rgba(200,169,110,0.3);
+      border-radius: 999px;
+      text-shadow: 0 1px 4px rgba(0,0,0,0.8);
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+    }
+    #join-hint {
+      font-size: 0.78rem; opacity: 0.6;
+      font-family: 'IM Fell English', Georgia, serif; font-style: italic;
+      text-shadow: 0 1px 4px rgba(0,0,0,0.9);
+    }
 
     /* ── HUD ─────────────────────────────────────────────────── */
     #hud { position: fixed; inset: 0; pointer-events: none; z-index: 100; }
@@ -81,22 +216,25 @@
       overflow: hidden;
       display: none;
     }
-    #latency-list-title {
-      padding: 0.3rem 0.8rem;
-      font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em;
-      color: rgba(200,169,110,0.6);
-      border-bottom: 1px solid rgba(200,169,110,0.15);
-    }
     .latency-row {
-      display: flex; justify-content: space-between; align-items: center;
-      padding: 0.25rem 0.8rem; gap: 1.2rem;
+      display: grid;
+      grid-template-columns: minmax(6em, 1fr) 2.2em 2.2em 3em 3.6em;
+      column-gap: 0.45em; align-items: center;
+      padding: 0.25rem 0.8rem;
       font-size: 0.8rem; color: #ddd;
       border-bottom: 1px solid rgba(255,255,255,0.05);
     }
     .latency-row:last-child { border-bottom: none; }
-    .latency-row-ms {
-      color: #4caf50; font-size: 0.75rem; white-space: nowrap;
+    .latency-row > span { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .latency-row-name { text-align: left !important; overflow: hidden; text-overflow: ellipsis; }
+    .latency-head {
+      font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em;
+      color: rgba(200,169,110,0.75);
+      border-bottom: 1px solid rgba(200,169,110,0.15);
+      padding: 0.3rem 0.8rem;
     }
+    .latency-row-ms { color: #4caf50; font-size: 0.75rem; }
+    .latency-row-k, .latency-row-d, .latency-row-g { color: #c8a96e; font-size: 0.78rem; }
 
     #compass {
       position: absolute; top: 1rem; left: 50%; transform: translateX(-50%);
@@ -104,6 +242,20 @@
       padding: 0.35rem 1.2rem; border-radius: 5px; font-size: 0.9rem;
       border: 1px solid rgba(200,169,110,0.25);
       letter-spacing: 0.08em;
+    }
+
+    /* ── Wind indicator ──────────────────────────────────────── */
+    #wind-indicator {
+      position: absolute; top: 3.4rem; left: 50%; transform: translateX(-50%);
+      display: flex; align-items: center; gap: 0.5rem;
+      color: rgba(200,169,110,0.85); background: rgba(0,0,0,0.45);
+      padding: 0.25rem 0.9rem; border-radius: 5px; font-size: 0.72rem;
+      border: 1px solid rgba(200,169,110,0.2);
+      letter-spacing: 0.1em;
+    }
+    #wind-arrow {
+      display: inline-block; font-size: 1rem; line-height: 1;
+      transition: transform 0.3s ease, color 0.3s;
     }
 
     #speed-bar {
@@ -120,6 +272,154 @@
       height: 100%; background: #c8a96e; border-radius: 4px;
       transition: width 0.15s;
     }
+
+    /* ── Helm / rudder indicator ─────────────────────────────── */
+    #rudder-row {
+      position: absolute; bottom: 4.6rem; left: 50%; transform: translateX(-50%);
+      display: flex; align-items: center; gap: 0.5rem;
+      color: rgba(200,169,110,0.85); font-size: 0.68rem; letter-spacing: 0.08em;
+    }
+    #rudder-bar {
+      position: relative;
+      width: 120px; height: 7px;
+      background: rgba(0,0,0,0.5);
+      border: 1px solid rgba(200,169,110,0.3);
+      border-radius: 4px;
+    }
+    #rudder-bar::after {
+      content: ''; position: absolute; left: 50%; top: -2px; bottom: -2px;
+      width: 1px; background: rgba(200,169,110,0.5);
+    }
+    #rudder-marker {
+      position: absolute; top: -3px;
+      width: 5px; height: 11px; border-radius: 2px;
+      background: #e8c97e; transform: translateX(-50%);
+      transition: left 0.1s linear;
+    }
+
+    /* ── Battle HUD: health + cannon reload ──────────────────── */
+    #battle-hud {
+      position: absolute; bottom: 8rem; left: 50%; transform: translateX(-50%);
+      display: flex; flex-direction: column; align-items: center; gap: 0.45rem;
+      pointer-events: none;
+    }
+    #hp-row {
+      display: flex; align-items: center; gap: 0.6rem;
+      color: #c8a96e; font-size: 0.8rem;
+    }
+    #hp-fill {
+      width: 180px; height: 12px; background: rgba(0,0,0,0.5);
+      border-radius: 6px; overflow: hidden;
+      border: 1px solid rgba(200,169,110,0.4);
+    }
+    #hp-fill-inner {
+      height: 100%; background: #4caf50; border-radius: 6px;
+      transition: width 0.15s, background 0.3s;
+    }
+    #hp-text { min-width: 2em; text-align: left; font-size: 0.85rem; }
+    #reload-row {
+      display: flex; gap: 1.2rem;
+      color: rgba(200,169,110,0.85); font-size: 0.72rem;
+    }
+    .reload-box {
+      display: flex; align-items: center; gap: 0.4rem;
+    }
+    .reload-key {
+      background: rgba(0,0,0,0.6); border: 1px solid rgba(200,169,110,0.45);
+      border-radius: 3px; padding: 0 5px; font-size: 0.72rem; line-height: 1.5;
+    }
+    .reload-bar {
+      width: 64px; height: 6px; background: rgba(0,0,0,0.5);
+      border-radius: 3px; overflow: hidden;
+      border: 1px solid rgba(200,169,110,0.3);
+    }
+    .reload-fill {
+      height: 100%; width: 100%; background: rgba(200,169,110,0.55);
+      border-radius: 3px;
+    }
+    .reload-box.ready .reload-fill { background: #e8c97e; }
+    .reload-box.ready .reload-key  { color: #e8c97e; border-color: #e8c97e; }
+
+    /* ── Status row (buffs, leaks, rigging) ──────────────────── */
+    #status-row {
+      min-height: 1.1em;
+      color: #e8c97e; font-size: 0.78rem;
+      text-shadow: 0 1px 4px rgba(0,0,0,0.9);
+      letter-spacing: 0.04em;
+    }
+
+    /* ── Gold ────────────────────────────────────────────────── */
+    #gold-count {
+      color: #e8c97e; background: rgba(0,0,0,0.55);
+      padding: 0.45rem 1rem; border-radius: 5px; font-size: 0.9rem;
+      border: 1px solid rgba(200,169,110,0.25);
+      white-space: nowrap;
+    }
+
+    /* ── World map (M) ───────────────────────────────────────── */
+    #map-overlay {
+      position: fixed; inset: 0; z-index: 500;
+      display: none; align-items: center; justify-content: center;
+      flex-direction: column; gap: 0.6rem;
+      background: rgba(4, 10, 20, 0.6);
+      pointer-events: none;
+    }
+    #map-frame {
+      background: linear-gradient(160deg, #3a2712, #241708);
+      border: 1px solid rgba(200,169,110,0.6);
+      border-radius: 8px;
+      padding: 14px;
+      box-shadow: 0 18px 60px rgba(0,0,0,0.75);
+    }
+    #map-canvas { display: block; border-radius: 3px; }
+    #map-title {
+      font-family: 'Pirata One', Georgia, serif;
+      font-size: 1.6rem; color: #e8c97e;
+      text-shadow: 0 2px 8px rgba(0,0,0,0.9);
+      letter-spacing: 0.06em;
+    }
+    #map-legend {
+      display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center;
+      color: #d9c491; font-size: 0.72rem;
+      text-shadow: 0 1px 4px rgba(0,0,0,0.9);
+    }
+
+    /* ── Damage vignette ─────────────────────────────────────── */
+    #damage-vignette {
+      position: fixed; inset: 0; pointer-events: none; z-index: 300;
+      background: radial-gradient(ellipse at center,
+        rgba(200,30,20,0) 40%, rgba(200,30,20,0.55) 100%);
+      opacity: 0; transition: opacity 0.45s ease;
+    }
+
+    /* ── Waiting / joining overlay (lockstep) ────────────────── */
+    #waiting-overlay {
+      position: fixed; inset: 0; z-index: 450;
+      display: none; align-items: center; justify-content: center;
+      background: rgba(4, 10, 20, 0.35);
+      pointer-events: none;
+    }
+    #waiting-text {
+      font-family: 'IM Fell English', Georgia, serif; font-style: italic;
+      color: #e8c97e; font-size: 1.2rem;
+      background: rgba(10, 16, 28, 0.8);
+      border: 1px solid rgba(200,169,110,0.4);
+      border-radius: 8px; padding: 0.8rem 1.8rem;
+      text-shadow: 0 2px 8px rgba(0,0,0,0.9);
+    }
+
+    /* ── Sunk overlay ────────────────────────────────────────── */
+    #sunk-overlay {
+      position: fixed; inset: 0; z-index: 400;
+      display: none; flex-direction: column;
+      align-items: center; justify-content: center; gap: 0.8rem;
+      background: rgba(10, 16, 30, 0.55);
+      color: #e8c97e; pointer-events: none;
+      text-shadow: 0 2px 12px rgba(0,0,0,0.8);
+    }
+    #sunk-overlay h2 { font-size: 3rem; letter-spacing: 0.05em; }
+    #sunk-by { font-size: 1.15rem; opacity: 0.85; }
+    #respawn-count { font-size: 0.95rem; opacity: 0.7; }
 
     /* ── Chat ────────────────────────────────────────────────── */
     #chat-box {
@@ -246,7 +546,8 @@
 
     /* ── Player name labels ──────────────────────────────────── */
     .player-label {
-      position: fixed; pointer-events: none;
+      position: fixed; left: 0; top: 0; pointer-events: none;
+      will-change: transform;
       transform: translate(-50%, -100%);
       background: rgba(0,0,0,0.65); color: #fff;
       padding: 2px 8px; border-radius: 3px;
@@ -260,7 +561,8 @@
 
     /* ── Chat bubble (floats above ship in 3-D space) ─────────── */
     .chat-bubble {
-      position: fixed; pointer-events: none;
+      position: fixed; left: 0; top: 0; pointer-events: none;
+      will-change: transform;
       transform: translate(-50%, -100%);
       background: rgba(0,0,0,0.78); color: #fff;
       padding: 5px 11px; border-radius: 12px;
@@ -295,6 +597,15 @@
       user-select: none;
     }
     #voice-btn:hover { background: rgba(0,0,0,0.75); }
+    #quit-btn {
+      background: rgba(0,0,0,0.55); border: 1px solid rgba(200,169,110,0.25);
+      color: #c8a96e; padding: 0.4rem 0.75rem; border-radius: 5px;
+      font-size: 1rem; cursor: pointer; pointer-events: all;
+      transition: background 0.2s, color 0.2s;
+      user-select: none; font-family: inherit;
+    }
+    #quit-btn:hover { background: rgba(0,0,0,0.75); color: #f44336; }
+    #quit-btn.armed { background: rgba(196,53,42,0.35); color: #fff; border-color: #c4352a; }
     #voice-btn.active { color: #4caf50; border-color: rgba(76,175,80,0.4); }
     #voice-btn.muted  { color: #f44336; border-color: rgba(244,67,54,0.4); }
 
@@ -305,6 +616,54 @@
       color: #c8a96e; font-size: 0.82rem; pointer-events: all;
       display: none; flex-direction: column; gap: 0.65rem;
       z-index: 200;
+    }
+
+    /* ── Settings ─────────────────────────────────────────────── */
+    #settings-btn {
+      background: rgba(0,0,0,0.55); border: 1px solid rgba(200,169,110,0.25);
+      color: #c8a96e; padding: 0.4rem 0.75rem; border-radius: 5px;
+      font-size: 1rem; cursor: pointer; pointer-events: all;
+      transition: background 0.2s;
+      user-select: none; font-family: inherit;
+    }
+    #settings-btn:hover { background: rgba(0,0,0,0.75); }
+    #settings-panel {
+      position: absolute; top: 3.5rem; right: 1rem;
+      background: rgba(10,22,40,0.92); border: 1px solid rgba(200,169,110,0.3);
+      border-radius: 6px; padding: 0.9rem 1rem; width: 230px;
+      color: #c8a96e; font-size: 0.82rem; pointer-events: all;
+      display: none; flex-direction: column; gap: 0.7rem;
+      z-index: 200;
+    }
+    #settings-panel.open { display: flex; }
+    #settings-panel .settings-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 0.6rem;
+    }
+    #settings-panel label {
+      opacity: 0.8; font-size: 0.78rem;
+    }
+    #settings-panel .settings-title {
+      font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em;
+      opacity: 0.6; border-bottom: 1px solid rgba(200,169,110,0.15);
+      padding-bottom: 0.4rem;
+    }
+    #settings-panel select {
+      padding: 0.25rem 0.4rem;
+      background: rgba(255,255,255,0.08); border: 1px solid rgba(200,169,110,0.4);
+      color: #fff; border-radius: 4px; font-size: 0.78rem; outline: none;
+      font-family: inherit;
+    }
+    #settings-panel select option { background: #0a1628; }
+    #settings-panel input[type="checkbox"] { accent-color: #c8a96e; width: 1rem; height: 1rem; }
+    #settings-panel input[type="range"] { accent-color: #c8a96e; width: 110px; }
+
+    #fps-counter {
+      position: absolute; top: 1rem; left: 1rem;
+      color: #c8a96e; background: rgba(0,0,0,0.55);
+      padding: 0.3rem 0.6rem; border-radius: 5px;
+      border: 1px solid rgba(200,169,110,0.25);
+      font-size: 0.8rem; font-variant-numeric: tabular-nums;
+      display: none; pointer-events: none;
     }
     #voice-panel.open { display: flex; }
     #voice-panel label { opacity: 0.65; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.07em; }
@@ -343,6 +702,21 @@
     #voice-nearby {
       font-size: 0.78rem; opacity: 0.7; min-height: 1.1em;
     }
+    #voice-channel-row { display: flex; gap: 0.35rem; }
+    #voice-channel-input {
+      flex: 1; min-width: 0; padding: 0.3rem 0.5rem;
+      background: rgba(255,255,255,0.08); border: 1px solid rgba(200,169,110,0.4);
+      color: #fff; border-radius: 4px; font-size: 0.8rem; outline: none;
+    }
+    #voice-channel-btn {
+      padding: 0.3rem 0.7rem; border-radius: 4px; border: none;
+      background: rgba(200,169,110,0.25); color: #e8c97e;
+      cursor: pointer; font-size: 0.78rem; font-family: inherit;
+    }
+    #voice-channel-btn:hover { background: rgba(200,169,110,0.4); }
+    #voice-channel-status {
+      font-size: 0.74rem; color: #7ddc6e; min-height: 1em;
+    }
 
     /* ── PTT active indicator ────────────────────────────────── */
     #ptt-indicator {
@@ -359,18 +733,44 @@
 </head>
 <body>
   <div id="loading">
-    <h1>⚓ Sea of Friends</h1>
-    <p>Connecting to the DHT network…</p>
+    <h1>Sea of Friends</h1>
+    <p>Hoisting the colours… connecting to the DHT</p>
   </div>
 
   <div id="name-screen">
-    <h2>⚓ Enter the Sea</h2>
-    <p>P2P · No servers · DHT peer discovery</p>
-    <label for="name-input">Captain's name</label>
-    <input id="name-input" type="text" placeholder="e.g. Blackbeard" maxlength="20" autocomplete="off" />
-    <label for="room-input">Room code</label>
-    <input id="room-input" type="text" placeholder="world-1 (share with friends)" maxlength="32" autocomplete="off" />
-    <button id="join-btn">Set Sail!</button>
+    <div id="title">Sea of Friends</div>
+    <div id="tagline"><span class="skull">☠</span> Broadsides, ghost ships &amp; buried treasure — no servers, just yer crew <span class="skull">☠</span></div>
+    <div id="join-panel">
+      <label for="name-input">Captain's name</label>
+      <input id="name-input" type="text" placeholder="e.g. Blackbeard" maxlength="20" autocomplete="off" />
+      <label for="room-input">Room code</label>
+      <input id="room-input" type="text" placeholder="world-1 — share with yer crew" maxlength="32" autocomplete="off" />
+      <label>Choose yer ship</label>
+      <div id="ship-select">
+        <div class="ship-card" data-cls="sloop">
+          <div class="ship-name">Sloop</div>
+          <div class="ship-desc">Swift &amp; slippery<br>1+1 guns · 70 hull</div>
+        </div>
+        <div class="ship-card selected" data-cls="frigate">
+          <div class="ship-name">Frigate</div>
+          <div class="ship-desc">The all-rounder<br>3+2 guns · 100 hull</div>
+        </div>
+        <div class="ship-card" data-cls="manowar">
+          <div class="ship-name">Man-o'-War</div>
+          <div class="ship-desc">Slow &amp; devastating<br>5+4 guns · 150 hull</div>
+        </div>
+      </div>
+      <button id="join-btn">⚓ Set Sail</button>
+    </div>
+    <div id="features">
+      <span class="feature-chip">⚔ Broadside battles</span>
+      <span class="feature-chip">👻 Ghost ships</span>
+      <span class="feature-chip">🗺 Procedural seas</span>
+      <span class="feature-chip">⛵ True wind sailing</span>
+      <span class="feature-chip">🎤 Proximity voice</span>
+      <span class="feature-chip">🌐 Fully P2P — no servers</span>
+    </div>
+    <div id="join-hint">Same room code = same sea. The first captain in charts the world.</div>
   </div>
 
   <canvas id="canvas"></canvas>
@@ -379,15 +779,72 @@
     <div id="net-status">● DHT</div>
     <div id="hud-top-right">
       <button id="voice-btn" title="Voice chat">🎤</button>
+      <div id="gold-count">🪙 0</div>
       <div id="peer-count">⚓ 1 sailor</div>
+      <button id="settings-btn" title="Settings">⚙</button>
+      <button id="quit-btn" title="Abandon ship — back to the menu">⏏</button>
     </div>
+    <div id="settings-panel">
+      <div class="settings-title">⚙ Ship's Rigging</div>
+      <div class="settings-row">
+        <label for="set-fps">Show FPS</label>
+        <input type="checkbox" id="set-fps" />
+      </div>
+      <div class="settings-row">
+        <label for="set-shadows">Shadows</label>
+        <select id="set-shadows">
+          <option value="high">High</option>
+          <option value="low">Low</option>
+          <option value="off">Off</option>
+        </select>
+      </div>
+      <div class="settings-row">
+        <label for="set-sfx">Effects volume</label>
+        <input type="range" id="set-sfx" min="0" max="100" step="5" />
+      </div>
+    </div>
+    <div id="fps-counter">60 fps</div>
     <div id="latency-list">
-      <div id="latency-list-title">📡 Crew Latency</div>
+      <div class="latency-row latency-head">
+        <span class="latency-row-name">⚓ Crew</span>
+        <span title="Kills">⚔</span>
+        <span title="Deaths">☠</span>
+        <span title="Gold">🪙</span>
+        <span title="Ping">⏱</span>
+      </div>
     </div>
     <div id="compass">N</div>
+    <div id="wind-indicator"><span id="wind-arrow">➤</span> WIND <span id="wind-speed"></span></div>
     <div id="speed-bar">
-      <span>SPEED</span>
+      <span id="sail-text">SAILS 0%</span>
       <div id="speed-fill"><div id="speed-fill-inner" style="width:0%"></div></div>
+    </div>
+    <div id="rudder-row">
+      <span>PORT</span>
+      <div id="rudder-bar"><div id="rudder-marker" style="left:50%"></div></div>
+      <span>STBD</span>
+    </div>
+    <div id="battle-hud">
+      <div id="reload-row">
+        <div class="reload-box" id="reload-q">
+          <span class="reload-key">Q</span>
+          <div class="reload-bar"><div class="reload-fill"></div></div>
+        </div>
+        <div class="reload-box" id="reload-b">
+          <span class="reload-key">▲</span>
+          <div class="reload-bar"><div class="reload-fill"></div></div>
+        </div>
+        <div class="reload-box" id="reload-e">
+          <div class="reload-bar"><div class="reload-fill"></div></div>
+          <span class="reload-key">E</span>
+        </div>
+      </div>
+      <div id="hp-row">
+        <span>HULL</span>
+        <div id="hp-fill"><div id="hp-fill-inner" style="width:100%"></div></div>
+        <span id="hp-text">100</span>
+      </div>
+      <div id="status-row"></div>
     </div>
     <div id="chat-box" data-tab="all">
       <div id="chat-tabs">
@@ -404,15 +861,21 @@
     </div>
     <div id="ptt-indicator">📢 TRANSMITTING</div>
     <div id="controls-hint">
-      WASD / ↑↓←→ – Sail &nbsp;|&nbsp; Mouse drag – Camera &nbsp;|&nbsp; Scroll – Zoom<br>
-      Click canvas – Lock cursor &nbsp;|&nbsp; ESC – Unlock<br>
-      Enter – Chat &nbsp;|&nbsp; 🎤 – Voice chat &nbsp;|&nbsp; V – Push to Talk
+      W/S – Sails &nbsp;|&nbsp; <b>A/D – Helm</b> (wheel holds; both = centre) &nbsp;|&nbsp; <b>M – Chart</b><br>
+      <b>Hold Right-click – Aim</b> (camera picks the battery: port/starboard/bow chasers; mouse ↑↓ elevation)<br>
+      Q/E – Broadsides &nbsp;|&nbsp; Space – Fire camera-facing guns &nbsp;|&nbsp; Enter – Chat &nbsp;|&nbsp; V – Talk
     </div>
 
     <!-- Voice chat controls -->
     <div id="voice-panel">
       <label>Voice chat</label>
       <button id="voice-mute-btn">🎤 Mic on</button>
+      <label for="voice-channel-input">Crew channel (shared secret)</label>
+      <div id="voice-channel-row">
+        <input id="voice-channel-input" type="text" placeholder="e.g. blackflag" maxlength="24" autocomplete="off" />
+        <button id="voice-channel-btn">Join</button>
+      </div>
+      <div id="voice-channel-status"></div>
       <div id="voice-level-bar" title="Microphone input level">
         <div id="voice-level-fill"></div>
       </div>
@@ -423,6 +886,24 @@
       </select>
       <div id="voice-nearby"></div>
     </div>
+  </div>
+
+  <div id="map-overlay">
+    <div id="map-title">⚓ Chart of the Sea</div>
+    <div id="map-frame"><canvas id="map-canvas" width="620" height="620"></canvas></div>
+    <div id="map-legend">
+      <span>▲ You (gold)</span><span>▲ Enemy captains</span><span>▲ Ghost ships (green)</span>
+      <span>● Power-ups</span><span>■ Fort (hollow = cracked)</span><span>⛰ Volcano</span><span>◌ Atoll</span><span>M / ESC – close</span>
+    </div>
+  </div>
+
+  <div id="waiting-overlay"><div id="waiting-text"></div></div>
+
+  <div id="damage-vignette"></div>
+  <div id="sunk-overlay">
+    <h2>☠ SUNK ☠</h2>
+    <div id="sunk-by"></div>
+    <div id="respawn-count"></div>
   </div>
 
   <script type="module" src="/src/main.js"></script>
