@@ -46,6 +46,9 @@ export const SHIP_CLASSES = {
   },
 }
 
+const _muzzleDir  = new THREE.Vector3()
+const _muzzleQuat = new THREE.Quaternion()
+
 /** Gun stations along the hull for a given broadside count. */
 const SIDE_STATIONS = {
   1: [0],
@@ -267,6 +270,18 @@ export class Ship {
       this.group.add(cannon)
       this._cannons.bow.push(cannon)
     }
+  }
+
+  /** World-space muzzle of a battery's middle gun (anchors the aim arc).
+   *  Follows the barrel's current swivel and elevation. Render-only. */
+  getMuzzleWorld(battery, out) {
+    const guns = this._cannons[battery]
+    if (!guns || guns.length === 0) return null
+    const mid = guns[guns.length >> 1]
+    mid.getWorldPosition(out)
+    const dir = _muzzleDir.set(0, 0, 1).applyQuaternion(mid.getWorldQuaternion(_muzzleQuat))
+    out.addScaledVector(dir, this.halfLength * 0.22)
+    return out
   }
 
   /** Pitch one side's barrels (radians above horizontal). Render-only. */
