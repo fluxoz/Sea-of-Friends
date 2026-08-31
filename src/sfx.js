@@ -48,7 +48,7 @@ export class SFX {
    *  the synthesised voice covers the gap and any load failure. */
   async _loadCannonSamples() {
     this._cannonBufs = []
-    for (let i = 1; i <= 5; i++) {
+    for (let i = 1; i <= 6; i++) {
       try {
         const r = await fetch(`/assets/sounds/cannon_${i}.ogg`)
         if (!r.ok) continue
@@ -190,15 +190,10 @@ export class SFX {
       gain.gain.value = Math.min(1, 1.1 * v)
       src.connect(filter).connect(gain).connect(this._master)
       src.start(t0)
-      // Weight under the recording: sub thump + rolling tail
+      // A touch of sub under the recording — the real tails carry the rest
       this._tone({
-        type: 'sine', freqStart: 58, freqEnd: 30,
-        dur: 0.35, gainPeak: 0.4 * v, attack: 0.004, delay,
-      })
-      this._noiseBurst({
-        dur: 1.2, filterType: 'lowpass',
-        freqStart: 130, freqEnd: 40,
-        gainPeak: 0.1 * v, attack: 0.05, delay: delay + 0.1,
+        type: 'sine', freqStart: 55, freqEnd: 30,
+        dur: 0.3, gainPeak: 0.22 * v, attack: 0.004, delay,
       })
       return
     }
