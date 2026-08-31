@@ -475,7 +475,12 @@ export class Ship {
     // Hard rudder bleeds speed
     this.speed *= 1 - Math.abs(turn) * (Math.abs(this.speed) / MAX_SHIP_SPEED) * 0.35 * dt
 
-    const turnRate = 0.7 * (Math.abs(this.speed) / MAX_SHIP_SPEED + 0.12) * this.turnMul
+    // Underway, the rudder needs water over it; at a standstill the crew can
+    // pivot the ship (oars, warping) far faster than the old crawl. The
+    // pivot term fades out by a quarter of max speed.
+    const spdFrac = Math.abs(this.speed) / MAX_SHIP_SPEED
+    const pivot   = 0.5 * Math.max(0, 1 - spdFrac / 0.25)
+    const turnRate = (0.7 * (spdFrac + 0.12) + pivot) * this.turnMul
     this.rotationY = wrapAngle(this.rotationY + turn * turnRate * dt)
 
     this.position.x += dsin(this.rotationY) * this.speed * dt
@@ -483,6 +488,27 @@ export class Ship {
 
     this.position.x = Math.max(-WORLD_HALF, Math.min(WORLD_HALF, this.position.x))
     this.position.z = Math.max(-WORLD_HALF, Math.min(WORLD_HALF, this.position.z))
+  }
+
+  /** Relative heft for collision resolution (sloop 0.7 … man-o'-war 1.5). */
+  get mass() { return this.maxHp / 100 }
+
+  /**
+   * Deterministic hull footprint as three circles along the keel — bow,
+   * midships, stern — for ship-to-ship collision (dmath only).
+   * @returns {Array<{x:number, z:number, r:number, bow:boolean}>}
+   */
+  collisionCircles() {
+    const fx = dsin(this.rotationY), fz = dcos(this.rotationY)
+    const L = this.halfLength, W = this.halfWidth
+    const at = (a, r, bow) => ({
+      x: this.position.x + fx * a, z: this.position.z + fz * a, r, bow,
+    })
+    return [
+      at(L * 0.62, W * 0.85, true),
+      at(0, W + 0.5, false),
+      at(-L * 0.55, W * 0.95, false),
+    ]
   }
 
   /** Lift the ship to the current ocean-wave height at its (x, z). */
