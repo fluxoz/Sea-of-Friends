@@ -287,11 +287,29 @@ export class Lockstep {
     this.roster.set(this.selfId, { start: t0 + 1, end: null })
     this._confirmedSnap = this.hooks.getSnapshot()
     this._confirmedAt = performance.now()
+    this._startReplay()
     this.state = 'running'
     this._selfLive = true
     this.hooks.onState('running')
     this.hooks.onSelfJoined()
   }
+
+  /**
+   * Replay recording: a deterministic sim means a snapshot plus the input
+   * stream IS a bit-perfect replay. Records the confirmed timeline only —
+   * predictions never happened.
+   */
+  _startReplay() {
+    this._replay = {
+      startedAt: Date.now(),
+      foundedAt: this.foundedAt,
+      startTick: this.confirmed,
+      snap: JSON.parse(JSON.stringify(this._confirmedSnap)),
+      records: [],
+    }
+  }
+
+  getReplay() { return this._replay }
 
   _adopt(data) {
     this.hooks.loadSnapshot(data.state)
@@ -308,6 +326,7 @@ export class Lockstep {
     }
     for (const [ppid, inp] of data.pending ?? []) this._bufferInput(ppid, inp)
     this._selfLive = this.roster.has(this.selfId) && this.roster.get(this.selfId).end === null
+    this._startReplay()
     this.state = 'running'
     this.hooks.onState('running')
   }
@@ -533,6 +552,16 @@ export class Lockstep {
           if (cmd.p) this._sentCmdsFor.delete(cmd.p)
         }
       }
+    }
+
+    if (this._replay && this._replay.records.length < 400000) {
+      const rec = [t, [...inputs].map(([pid, pk]) => {
+        if (!pk.h && !pk.c) return [pid, pk]
+        const { h, c, ...bare } = pk
+        return [pid, bare]
+      })]
+      if (cmds.length) rec.push(cmds)
+      this._replay.records.push(rec)
     }
 
     this.hooks.executeTick(t, inputs, cmds)

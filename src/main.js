@@ -104,6 +104,7 @@ const COMMANDS = [
   { cmd: '/votekick', args: '<name>', desc: 'Vote to kick a captain (majority of the crew)' },
   { cmd: '/mute',  args: '<name>',    desc: 'Mute/unmute a captain (voice + chat)' },
   { cmd: '/desync', args: '',         desc: 'Download the desync evidence bundle' },
+  { cmd: '/replay', args: '',         desc: 'Download this session as a watchable replay' },
 ]
 
 // ── Room links: ?room=X prefills the code (and names the sea on mobile) ──────
@@ -157,6 +158,28 @@ document.addEventListener('keydown', e => {
   if (e.code === 'Escape') document.getElementById('invite-panel').classList.remove('open')
 })
 
+// ── Replay playback entry ─────────────────────────────────────────────────────
+{
+  const btn = document.getElementById('replay-btn')
+  const file = document.getElementById('replay-file')
+  btn.addEventListener('click', () => file.click())
+  file.addEventListener('change', async () => {
+    const f = file.files?.[0]
+    if (!f) return
+    try {
+      const data = JSON.parse(await f.text())
+      if (!data?.snap || !Array.isArray(data.records)) throw new Error('not a replay')
+      nameScreen.style.display = 'none'
+      hudEl.style.display = 'block'
+      game.startReplay(data)
+      addSystemMessage(`🎞 Replaying ${(data.records.length / 20 / 60).toFixed(1)} min — Space pause, N next ship, 1-4 speed, Esc exit`)
+    } catch {
+      addSystemMessage('That file is not a Sea of Friends replay.')
+      file.value = ''
+    }
+  })
+}
+
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 async function init() {
   // Show asset-loading progress in the loading screen
@@ -176,6 +199,7 @@ async function init() {
     // props (cloneAsset degrades to empty stand-ins without the preload)
     game = new Game(document.getElementById('canvas'))
     game.init()
+    window.__game = game
     loadingEl.style.display = 'none'
     document.body.classList.add('is-mobile')
     const roomLine = document.getElementById('mobile-room-line')
@@ -200,6 +224,7 @@ async function init() {
   game = new Game(document.getElementById('canvas'))
   game.init()
   game.applySettings(settings)
+  window.__game = game
 
   loadingEl.style.display  = 'none'
   nameScreen.style.display = 'flex'
@@ -623,6 +648,20 @@ function handleCommand(raw) {
       const pid = resolvePeerByName(who)
       if (!pid) { addSystemMessage(`No captain called "${who}" on this sea.`); break }
       game.toggleMute(pid)
+      break
+    }
+
+    case 'replay': {
+      const rec = game?.lockstep?.getReplay?.()
+      if (!rec || !rec.records.length) { addSystemMessage('Nothing recorded yet — sail a while first.'); break }
+      const blob = new Blob([JSON.stringify(rec)], { type: 'application/json' })
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(blob)
+      a.download = `sof-replay-${network?.roomId ?? 'sea'}-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}.json`
+      a.click()
+      URL.revokeObjectURL(a.href)
+      const mins = (rec.records.length / 20 / 60).toFixed(1)
+      addSystemMessage(`🎞 Replay downloaded — ${mins} min of the confirmed timeline. Watch it from the menu.`)
       break
     }
 

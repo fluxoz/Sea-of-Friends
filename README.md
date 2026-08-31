@@ -302,6 +302,13 @@ RTS multiplayer, adapted to the open sea:
   purse intact; only after expiry (or a deliberate quit, which says goodbye
   on the way out) does the ship go down and the purse drift overboard.
 
+### 🎞 Replays
+
+A deterministic sim means **a snapshot plus the input stream is a
+bit-perfect replay**. Every session records its confirmed timeline;
+`/replay` downloads it, and "🎞 Watch a replay" on the menu plays one back —
+follow-cam with `N` to cycle ships, `1-4` for speed, `Space` to pause.
+
 ### 🏴 Strangers, votekick, and the board
 
 - **Public session board**: check "List this sea publicly" on the menu and
