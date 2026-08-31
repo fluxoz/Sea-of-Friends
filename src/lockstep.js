@@ -95,6 +95,8 @@ export class Lockstep {
     this._sentCmdsFor  = new Set()
     this._parkExpiry   = new Map()  // pid → wall deadline for a parked ship
     this._deliberate   = new Set()  // peers that said goodbye (skip parking)
+    this._banned       = new Map()  // orderer: kicked pid → readmit-after (wall ms)
+    this.kicked        = false      // we were voted off — stop auto-rejoining
     this._hashes = new Map()     // tick → own hash
 
     this._wire()
@@ -143,6 +145,11 @@ export class Lockstep {
 
     net.onJreq = (pid, data) => {
       if (this.state !== 'running' || this._orderer() !== this.selfId) return
+      const ban = this._banned.get(pid)
+      if (ban !== undefined) {
+        if (performance.now() < ban) return   // voted off — not yet welcome back
+        this._banned.delete(pid)
+      }
       if (this.roster.has(pid) && this.roster.get(pid).end === null) return
       if (!this._pendingJoins.some(j => j.pid === pid)) {
         this._pendingJoins.push({ pid, cls: data?.c })
@@ -340,8 +347,9 @@ export class Lockstep {
     // ── running ────────────────────────────────────────────────────────────
     const dueTick = Math.floor((now - this.startWall) / TICK_MS)
 
-    // Ask to be let aboard until our own join command lands
-    if (!this._selfLive && now - this._jreqSent > 2000) {
+    // Ask to be let aboard until our own join command lands (not after a
+    // votekick — the crew doesn't want us back)
+    if (!this._selfLive && !this.kicked && now - this._jreqSent > 2000) {
       this._jreqSent = now
       this.network.sendJreq({ c: this.shipClass })
     }
@@ -428,6 +436,23 @@ export class Lockstep {
     }
   }
 
+  /**
+   * Votekick: the crew agreed (majority tallied out-of-band) — the orderer
+   * ejects the target through the normal departure agreement, marks the
+   * departure deliberate (no parking grace), and refuses re-admission for a
+   * while. The {d, k:1} command tells the target it was a kick, not a drop.
+   */
+  kick(pid) {
+    if (this._orderer() !== this.selfId || pid === this.selfId) return false
+    const entry = this.roster.get(pid)
+    if (!entry || entry.end !== null) return false
+    this._deliberate.add(pid)
+    this._kicking = (this._kicking ?? new Set()).add(pid)
+    this._banned.set(pid, performance.now() + 5 * 60 * 1000)
+    this._beginLeave(pid)
+    return true
+  }
+
   _blockersAt(t) {
     const blockers = []
     for (const [pid, r] of this.roster) {
@@ -493,8 +518,15 @@ export class Lockstep {
             const e = this.roster.get(cmd.d)
             if (e && e.end === null) e.end = t
             this._sentCmdsFor.delete(cmd.d)   // they may rejoin later
-            // Ejected while alive (we stalled too long): go re-join
-            if (cmd.d === this.selfId) this._selfLive = false
+            // Ejected while alive (we stalled too long): go re-join —
+            // unless it was a votekick, in which case stay gone
+            if (cmd.d === this.selfId) {
+              this._selfLive = false
+              if (cmd.k) {
+                this.kicked = true
+                this.hooks.onKicked?.()
+              }
+            }
           }
           // {p}: park — the sim anchors the ship; roster end was already
           // agreed in the departure settlement, so nothing changes here
@@ -608,7 +640,9 @@ export class Lockstep {
       }
       if (this._ordererAfter(pid) === this.selfId) {
         if (this._deliberate.has(pid)) {
-          this._pendingCmds.push({ d: pid })
+          const cmd = { d: pid }
+          if (this._kicking?.has(pid)) { cmd.k = 1; this._kicking.delete(pid) }
+          this._pendingCmds.push(cmd)
           this._deliberate.delete(pid)
         } else {
           this._pendingCmds.push({ p: pid })

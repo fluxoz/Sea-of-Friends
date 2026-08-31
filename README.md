@@ -302,6 +302,22 @@ RTS multiplayer, adapted to the open sea:
   purse intact; only after expiry (or a deliberate quit, which says goodbye
   on the way out) does the ship go down and the purse drift overboard.
 
+### 🏴 Strangers, votekick, and the board
+
+- **Public session board**: check "List this sea publicly" on the menu and
+  your room appears in "Seas taking crew" on everyone's menu — name, crew
+  size, world age — one click to board. Strictly **opt-in per room**;
+  unlisted seas stay exactly as private as their room code. Listings are
+  version-filtered (you only see seas your build can actually join) and
+  heartbeat-refreshed by the crew's orderer to the signaling Worker.
+- **Votekick**: ☠ on a crew row (or `/votekick <name>`) casts a ballot; a
+  strict majority of the live crew ejects the target through the same
+  deterministic departure machinery as a disconnect — no grace, and the
+  orderer refuses their rejoin for five minutes. A peer whose state hashes
+  keep diverging gets a votekick suggestion in the feed automatically.
+- **Per-player mute**: 🔇 on a crew row (or `/mute <name>`) silences a
+  captain's voice *and* chat for you alone.
+
 ### ⚙ CI
 
 Every push runs a **determinism gate** on GitHub Actions: two real browser

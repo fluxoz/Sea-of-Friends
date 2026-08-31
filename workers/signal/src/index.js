@@ -17,12 +17,20 @@
 
 export default {
   async fetch(request, env) {
-    if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') {
+    const url = new URL(request.url)
+    const isWs = request.headers.get('Upgrade')?.toLowerCase() === 'websocket'
+    if (!isWs && !url.pathname.startsWith('/board/')) {
       return new Response('sea-of-friends signaling: connect via WebSocket', { status: 200 })
     }
     const id = env.SWARM.idFromName('global')
     return env.SWARM.get(id).fetch(request)
   },
+}
+
+const CORS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
 }
 
 const ANNOUNCE_INTERVAL = 120   // seconds between client re-announces
@@ -36,9 +44,14 @@ export class Swarm {
     this.swarms = new Map()
     /** @type {Map<WebSocket, {peerId: string|null, hashes: Set<string>}>} */
     this.socks = new Map()
+    /** Session board: room → {players, age, v, seenAt}. Opt-in listings,
+     *  heartbeat-refreshed; stale rows fall off after 90 s. */
+    this.board = new Map()
   }
 
-  fetch(_request) {
+  fetch(request) {
+    const url = new URL(request.url)
+    if (url.pathname.startsWith('/board/')) return this._board(request, url)
     const pair = new WebSocketPair()
     const [client, server] = Object.values(pair)
     server.accept()
@@ -48,6 +61,44 @@ export class Swarm {
     server.addEventListener('close', drop)
     server.addEventListener('error', drop)
     return new Response(null, { status: 101, webSocket: client })
+  }
+
+  async _board(request, url) {
+    if (request.method === 'OPTIONS') return new Response(null, { headers: CORS })
+    const now = Date.now()
+    for (const [room, row] of this.board) {
+      if (now - row.seenAt > 90000) this.board.delete(room)
+    }
+
+    if (url.pathname === '/board/announce' && request.method === 'POST') {
+      let body
+      try { body = await request.json() } catch { body = null }
+      const room = typeof body?.room === 'string' ? body.room.slice(0, 32) : ''
+      if (!room || this.board.size >= 200) {
+        return new Response('{"ok":false}', { status: 400, headers: { ...CORS, 'Content-Type': 'application/json' } })
+      }
+      this.board.set(room, {
+        players: Math.max(1, Math.min(64, body.players | 0)),
+        age: Math.max(0, body.age | 0),
+        v: String(body.v ?? '').slice(0, 20),
+        seenAt: now,
+      })
+      return new Response('{"ok":true}', { headers: { ...CORS, 'Content-Type': 'application/json' } })
+    }
+
+    if (url.pathname === '/board/list') {
+      const v = url.searchParams.get('v') ?? ''
+      const rows = [...this.board.entries()]
+        .filter(([, r]) => !v || r.v === v)   // only seas you can actually join
+        .map(([room, r]) => ({ room, players: r.players, age: r.age }))
+        .sort((a, b) => b.players - a.players)
+        .slice(0, 50)
+      return new Response(JSON.stringify({ seas: rows }), {
+        headers: { ...CORS, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+      })
+    }
+
+    return new Response('not found', { status: 404, headers: CORS })
   }
 
   _onMessage(ws, ev) {

@@ -64,6 +64,12 @@ export class Game {
 
     this._map  = new WorldMap()
     this._sfx  = new SFX()
+    /** pids whose voice + chat we don't want to hear (render/audio side) */
+    this.muted = new Set()
+    /** votekick tallies: targetPid → Map(voterPid → wall ms) */
+    this._votes = new Map()
+    this._desyncCounts = new Map()
+    this.onKicked = null
     this._menuSeed = (Math.random() * 0xffffffff) >>> 0
     this._menuTime = 0
     this._lastHud  = 0
@@ -413,6 +419,17 @@ export class Game {
         this.onSystemMessage?.(
           `⚠ DESYNC: ${this._resolveName(pid)}'s sea disagrees with yours at tick ${tick}${what} — `
           + `/desync downloads the evidence bundle`)
+        const n = (this._desyncCounts.get(pid) ?? 0) + 1
+        this._desyncCounts.set(pid, n)
+        if (n === 3) {
+          this.onSystemMessage?.(
+            `⚖ ${this._resolveName(pid)}'s sea keeps disagreeing — a modified client? `
+            + `/votekick ${this._resolveName(pid)} to put it to the crew`)
+        }
+      },
+      onKicked: () => {
+        this.onSystemMessage?.('⚖ The crew has voted you off the ship.')
+        this.onKicked?.()
       },
       onSelfJoined: () => {
         this._playing = true
@@ -443,6 +460,22 @@ export class Game {
 
     // Persist the sea: the last captain ashore keeps the world
     this._saveTimer = setInterval(() => this._saveSea(), 10000)
+
+    // Opt-in session board: the orderer heartbeats this sea's listing
+    this._boardTimer = setInterval(() => {
+      if (!this.listPublicly || !this._playing) return
+      if (this.lockstep?._orderer() !== this.network.selfId) return
+      fetch('https://sea-of-friends-signal.fluxoz.workers.dev/board/announce', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          room: this.network.roomId,
+          players: this.lockstep._activeCount(),
+          age: this.sim.tick,
+          v: APP_VERSION,
+        }),
+      }).catch(() => { /* board down — the sea sails on */ })
+    }, 30000)
     this._onPageHide = () => this._saveSea()
     window.addEventListener('pagehide', this._onPageHide)
 
@@ -453,6 +486,10 @@ export class Game {
       this._applyCosmetics(pid, data)
     }
     network.setLocalInfo(playerName, '#' + color.toString(16).padStart(6, '0'))
+
+    network.onVote = (pid, data) => {
+      if (data?.t) this._tallyVote(pid, data.t)
+    }
   }
 
   // ── Sea persistence ────────────────────────────────────────────────────────
@@ -1192,7 +1229,7 @@ export class Game {
     const listEl = document.getElementById('latency-list')
     if (listEl) {
       listEl.style.display = 'block'
-      const upsertRow = (rowId, name, cols) => {
+      const upsertRow = (rowId, name, cols, pid) => {
         let row = listEl.querySelector(`[data-peer="${CSS.escape(rowId)}"]`)
         if (!row) {
           row = document.createElement('div')
@@ -1208,10 +1245,29 @@ export class Game {
             row.appendChild(span)
             return span
           })
+          const actions = document.createElement('span')
+          actions.className = 'latency-row-actions'
+          if (pid) {
+            const muteBtn = document.createElement('button')
+            muteBtn.className = 'crew-mute'
+            muteBtn.title = 'Mute their voice and chat'
+            muteBtn.textContent = '🔇'
+            muteBtn.addEventListener('click', () => this.toggleMute(pid))
+            const kickBtn = document.createElement('button')
+            kickBtn.className = 'crew-kick'
+            kickBtn.title = 'Vote to kick this captain'
+            kickBtn.textContent = '☠'
+            kickBtn.addEventListener('click', () => this.castVote(pid))
+            actions.appendChild(muteBtn)
+            actions.appendChild(kickBtn)
+            row._muteBtn = muteBtn
+          }
+          row.appendChild(actions)
           listEl.appendChild(row)
         }
         row._nameSpan.textContent = name
         cols.forEach((v, i) => { row._cols[i].textContent = v })
+        if (row._muteBtn) row._muteBtn.classList.toggle('active', this.muted.has(pid))
       }
 
       const seen = new Set()
@@ -1225,6 +1281,7 @@ export class Game {
           isMe ? (this.network.getLocalName() ?? 'You') : (peer?.name || pid.slice(0, 8)),
           [p.k, p.d, p.gold,
             isMe ? '—' : (peer?.latency !== undefined ? `${peer.latency}ms` : '—')],
+          isMe ? null : pid,
         )
       }
       listEl.querySelectorAll('.latency-row[data-peer]').forEach(row => {
@@ -1345,6 +1402,7 @@ export class Game {
     this._saveSea()   // the departing captain keeps the sea
     clearInterval(this._pumpTimer)
     clearInterval(this._saveTimer)
+    clearInterval(this._boardTimer)
     clearInterval(this._diagTimer)
     if (this._onPageHide) window.removeEventListener('pagehide', this._onPageHide)
     document.getElementById('diag-panel')?.remove()
@@ -1375,6 +1433,60 @@ export class Game {
   }
 
   getPlayerCount() { return this.sim ? this.sim.players.size : 1 }
+
+  // ── Votekick & mute ────────────────────────────────────────────────────────
+
+  toggleMute(pid) {
+    if (this.muted.has(pid)) {
+      this.muted.delete(pid)
+      this.onSystemMessage?.(`🔊 Unmuted ${this._resolveName(pid)}`)
+    } else {
+      this.muted.add(pid)
+      this.onSystemMessage?.(`🔇 Muted ${this._resolveName(pid)} — voice and chat`)
+    }
+  }
+
+  /** Cast (and broadcast) a vote to kick a captain. Majority = strict >50%
+   *  of the live crew. The tally is out-of-band; the KICK itself rides the
+   *  deterministic orderer machinery in lockstep.kick(). */
+  castVote(targetPid) {
+    if (!this._playing || targetPid === this.network.selfId) return
+    if (!this.sim?.players.has(targetPid)) return
+    this.network.sendVote?.({ t: targetPid })
+    this._tallyVote(this.network.selfId, targetPid, true)
+  }
+
+  _tallyVote(voterPid, targetPid, isLocal = false) {
+    if (!this.sim?.players.has(targetPid) || targetPid === voterPid) return
+    const VOTE_TTL = 90000
+    const now = performance.now()
+    let tally = this._votes.get(targetPid)
+    if (!tally) { tally = new Map(); this._votes.set(targetPid, tally) }
+    const fresh = !tally.has(voterPid) || now - tally.get(voterPid) > VOTE_TTL
+    tally.set(voterPid, now)
+    for (const [v, at] of tally) if (now - at > VOTE_TTL) tally.delete(v)
+
+    const active = this.lockstep?._activeCount() ?? 1
+    const needed = Math.floor(active / 2) + 1
+    const count  = tally.size
+    const tname  = this._resolveName(targetPid)
+    if (active <= 2) {
+      if (isLocal) this.onSystemMessage?.(`⚖ A crew of ${active} can't vote anyone off — part ways instead`)
+      return
+    }
+    if (fresh) {
+      this.onSystemMessage?.(
+        `⚖ ${this._resolveName(voterPid)} votes to kick ${tname} (${count}/${needed} needed`
+        + `${count < needed ? ` — /votekick ${tname} to agree` : ''})`)
+    }
+    if (count >= needed) {
+      this._votes.delete(targetPid)
+      if (this.lockstep?.kick(targetPid)) {
+        this.onSystemMessage?.(`⚖ The crew has spoken — ${tname} is voted off the ship`)
+      }
+      // Non-orderer peers: the orderer holds the same tally and acts on it
+    }
+  }
 
   /**
    * Apply user settings (render/audio side only — nothing here may touch
@@ -1439,6 +1551,7 @@ export class Game {
     const peers = new Map()
     for (const [pid, p] of this.sim.players) {
       if (pid === this.network.selfId) continue
+      if (this.muted.has(pid)) continue   // muted captains are never delivered
       const pos = p.ship.group.position
       peers.set(pid, { x: pos.x, y: pos.y, z: pos.z, vc: this.network.getPeer(pid)?.vc || '' })
     }

@@ -79,6 +79,7 @@ export class NetworkManager {
     this.onLastIn  = null     // (pid, {p, l})
     this.onRelayIn = null     // (pid, {rows})
     this.onBye     = null     // (pid) — deliberate quit, skip parking grace
+    this.onVote    = null     // (pid, {t}) — votekick ballot
 
     // Peer discovery: our own always-up signaling relay (a Durable Object
     // speaking the WebTorrent tracker protocol) first, the public trackers
@@ -115,6 +116,7 @@ export class NetworkManager {
     const [sendLastIn, onLastIn]   = room.makeAction('li')
     const [sendRelayIn, onRelayIn] = room.makeAction('ri')
     const [sendBye, onBye]         = room.makeAction('by')
+    const [sendVote, onVote]       = room.makeAction('vk')
 
     this._sendInfo   = sendInfo
     this._sendChat   = sendChat
@@ -176,6 +178,7 @@ export class NetworkManager {
     this.sendLastIn  = data => sendLastIn(data)
     this.sendRelayIn = data => sendRelayIn(data)
     this.sendBye     = () => { try { sendBye({}) } catch { /* leaving anyway */ } }
+    this.sendVote    = data => sendVote(data)
 
     // ── Peer lifecycle ─────────────────────────────────────────────────────
     room.onPeerJoin(peerId => {
@@ -213,6 +216,7 @@ export class NetworkManager {
     onLastIn((data, peerId)  => { if (!this.blackhole && this.onLastIn)  this.onLastIn(peerId, data) })
     onRelayIn((data, peerId) => { if (!this.blackhole && this.onRelayIn) this.onRelayIn(peerId, data) })
     onBye((_d, peerId)       => { if (this.onBye) this.onBye(peerId) })
+    onVote((data, peerId)    => { if (!this.blackhole && this.onVote) this.onVote(peerId, data) })
 
     // ── Latency ping / pong ────────────────────────────────────────────────
     onPing((_data, peerId) => { sendPong({}, peerId) })
