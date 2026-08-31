@@ -6,6 +6,6 @@ dist/
 # Nix build result symlinks
 result
 result-*
-assets/
+/assets/
 .direnv/
 shadowing_issue.png
