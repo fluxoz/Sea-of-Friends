@@ -388,8 +388,10 @@ and rare **pirate camps** on settled isles, a beached sailing boat on their
 shores, and coconut & banana trees mixed into the island flora.
 **Check each pack's licence before publishing this repo's `public/` folder.**
 
-**Attributions** (found assets): cannon recordings — "25 CC0 bang /
-firework SFX" by rubberduck via OpenGameArt (CC0); menu scroll — "Paper Scroll 2" by
+**Attributions** (found assets): cannon recordings — "Cannon Shot" by
+qubodup (from a US Government video, CC0), "Tank fire Mixed" by GaryQ,
+"Cannon2" by Isaac200000, "cannon" by Kneeling, and "Background Cannon
+Shot" by DRFX, all CC0 via freesound.org; menu scroll — "Paper Scroll 2" by
 OpenClipart via Wikimedia Commons (CC0); quill cursor — "Feather" icon by
 Lorc, game-icons.net (CC BY 3.0); fort loot chest/coins, ballista, farmhouse
 and other props from their respective packs in `assets/` — verify each
