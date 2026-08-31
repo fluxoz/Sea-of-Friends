@@ -158,14 +158,9 @@ document.addEventListener('keydown', e => {
   if (e.code === 'Escape') document.getElementById('invite-panel').classList.remove('open')
 })
 
-// ── Replay playback entry ─────────────────────────────────────────────────────
+// ── Replay playback: drop a replay file onto the menu ─────────────────────────
 {
-  const btn = document.getElementById('replay-btn')
-  const file = document.getElementById('replay-file')
-  btn.addEventListener('click', () => file.click())
-  file.addEventListener('change', async () => {
-    const f = file.files?.[0]
-    if (!f) return
+  const playFile = async f => {
     try {
       const data = JSON.parse(await f.text())
       if (!data?.snap || !Array.isArray(data.records)) throw new Error('not a replay')
@@ -175,8 +170,18 @@ document.addEventListener('keydown', e => {
       addSystemMessage(`🎞 Replaying ${(data.records.length / 20 / 60).toFixed(1)} min — Space pause, N next ship, 1-4 speed, Esc exit`)
     } catch {
       addSystemMessage('That file is not a Sea of Friends replay.')
-      file.value = ''
     }
+  }
+  document.getElementById('replay-file').addEventListener('change', e => {
+    const f = e.target.files?.[0]
+    if (f) playFile(f)
+  })
+  document.addEventListener('dragover', e => e.preventDefault())
+  document.addEventListener('drop', e => {
+    e.preventDefault()
+    if (nameScreen.style.display === 'none') return   // menu only
+    const f = e.dataTransfer?.files?.[0]
+    if (f && game) playFile(f)
   })
 }
 
