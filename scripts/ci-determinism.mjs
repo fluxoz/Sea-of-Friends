@@ -97,10 +97,12 @@ for (const [peer, r] of [['A', a], ['B', b]]) {
 }
 const bh = new Map(b.hashes)
 let compared = 0
-for (const [t, h] of a.hashes) {
+for (const [t, v] of a.hashes) {
   if (!bh.has(t)) continue
   compared++
-  if (h !== bh.get(t)) failures.push(`hash mismatch at tick ${t}: ${h} vs ${bh.get(t)}`)
+  const mine = v?.h ?? v
+  const theirs = bh.get(t)?.h ?? bh.get(t)
+  if (mine !== theirs) failures.push(`hash mismatch at tick ${t}: ${mine} vs ${theirs}`)
 }
 if (compared < 3) failures.push(`only ${compared} overlapping hashes compared`)
 console.log(`${compared} overlapping hashes compared`)

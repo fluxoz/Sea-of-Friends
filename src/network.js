@@ -19,7 +19,14 @@ const ICE_SERVERS = [
   { urls: 'stun:stun.cloudflare.com:3478' },
 ]
 
-const APP_ID = 'sea-of-friends-v2-lockstep'
+/**
+ * The protocol version is part of the app id, so peers on different builds
+ * NEVER meet: a mixed-build crew would desync by construction (the sims
+ * differ). Any change to sim/netcode behaviour must bump package.json's
+ * version — that is the protocol epoch. __APP_VERSION__ is injected by Vite.
+ */
+export const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev'
+const APP_ID = `sea-of-friends-${APP_VERSION}`
 
 /** Interval (ms) between latency pings sent to each peer. */
 const PING_INTERVAL = 2000

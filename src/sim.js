@@ -631,22 +631,34 @@ export class Sim {
     }
   }
 
+  /**
+   * State hash, computed per-subsystem so a mismatch NAMES the diverged
+   * system (players / AI / forts / power-ups / balls) instead of just
+   * screaming. Parts land in this.lastHashParts; the returned value combines
+   * them.
+   */
   hash() {
-    const acc = new HashAcc()
-    acc.int(this.tick).int(this.rng.save())
+    const pl = new HashAcc()
+    pl.int(this.tick).int(this.rng.save())
     for (const pid of this.sortedIds()) {
       const p = this.players.get(pid)
       const s = p.ship
-      acc.str(pid).num(s.position.x).num(s.position.z).num(s.rotationY)
-         .num(s.hp).num(s.sail).num(s.speed)
-         .int(p.gold).int(p.k).int(p.d).int(p.ammoShots).int(p.autoShots)
-         .num(p.reloadP).num(p.reloadS).num(p.reloadB)
-         .num(p.rudder).num(p.heldHeading ?? 0).int(p.heldHeading === null ? 1 : 0)
+      pl.str(pid).num(s.position.x).num(s.position.z).num(s.rotationY)
+        .num(s.hp).num(s.sail).num(s.speed)
+        .int(p.gold).int(p.k).int(p.d).int(p.ammoShots).int(p.autoShots)
+        .num(p.reloadP).num(p.reloadS).num(p.reloadB)
+        .num(p.rudder).num(p.heldHeading ?? 0).int(p.heldHeading === null ? 1 : 0)
     }
-    this.aiFleet.hash(acc)
-    this.forts.hash(acc)
-    this.powerups.hash(acc)
-    this.combat.ballHash(acc)
+    const ai = new HashAcc(); this.aiFleet.hash(ai)
+    const ft = new HashAcc(); this.forts.hash(ft)
+    const pu = new HashAcc(); this.powerups.hash(pu)
+    const ba = new HashAcc(); this.combat.ballHash(ba)
+    this.lastHashParts = {
+      players: pl.value(), ai: ai.value(), forts: ft.value(),
+      powerups: pu.value(), balls: ba.value(),
+    }
+    const acc = new HashAcc()
+    for (const v of Object.values(this.lastHashParts)) acc.int(v)
     return acc.value()
   }
 }

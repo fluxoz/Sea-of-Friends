@@ -2,11 +2,40 @@
  * main.js – Entry point: wires the UI overlays to the Game and NetworkManager.
  */
 import { Game }           from './game.js'
-import { NetworkManager } from './network.js'
+import { NetworkManager, APP_VERSION } from './network.js'
 import { ProximityAudio } from './audio.js'
 import { preloadAssets }  from './assets.js'
 
 const DEFAULT_ROOM_CODE = 'world-1'
+
+// ── Update watch ──────────────────────────────────────────────────────────────
+// Peers on different builds never meet (the protocol version is part of the
+// app id), so a stale tab just finds an empty-feeling sea. Poll the deployed
+// version and tell the captain a refresh is due.
+function watchForNewVersion() {
+  if (APP_VERSION === 'dev') return
+  const check = async () => {
+    try {
+      const r = await fetch('/version.json', { cache: 'no-store' })
+      if (!r.ok) return
+      const { version } = await r.json()
+      if (version && version !== APP_VERSION && !document.getElementById('update-banner')) {
+        const el = document.createElement('div')
+        el.id = 'update-banner'
+        el.style.cssText = 'position:fixed;top:0;left:50%;transform:translateX(-50%);z-index:500;'
+          + 'background:rgba(10,22,40,0.95);color:#c8a96e;border:1px solid rgba(200,169,110,0.5);'
+          + 'border-top:none;border-radius:0 0 6px 6px;padding:0.5rem 1.1rem;font-size:0.85rem;'
+          + 'cursor:pointer;pointer-events:all'
+        el.textContent = `⚓ A new version has shipped (${version}) — click to refresh and rejoin the fleet`
+        el.addEventListener('click', () => location.reload())
+        document.body.appendChild(el)
+        addSystemMessage(`⚓ New version ${version} is live — refresh to sail with the fleet (you're on ${APP_VERSION})`)
+      }
+    } catch { /* offline or dev — try again later */ }
+  }
+  check()
+  setInterval(check, 10 * 60 * 1000)
+}
 
 const PIRATE_NAMES = [
   'Blackbeard', 'Redcoat', 'SilverJack', 'DeepWater',
@@ -99,6 +128,7 @@ async function init() {
   loadingEl.style.display  = 'none'
   nameScreen.style.display = 'flex'
   nameInput.focus()
+  watchForNewVersion()
 }
 
 // ── Settings panel ────────────────────────────────────────────────────────────
@@ -412,6 +442,19 @@ function handleCommand(raw) {
     case 'clear':
       while (chatMessages.firstChild) chatMessages.removeChild(chatMessages.firstChild)
       break
+
+    case 'desync': {
+      const bundle = window.__desyncBundle
+      if (!bundle) { addSystemMessage('No desync captured this session — the sea agrees with everyone.'); break }
+      const blob = new Blob([JSON.stringify(bundle, null, 1)], { type: 'application/json' })
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(blob)
+      a.download = `sof-desync-${bundle.tick}.json`
+      a.click()
+      URL.revokeObjectURL(a.href)
+      addSystemMessage(`Desync bundle downloaded (tick ${bundle.tick}, diverged: ${bundle.guilty.join(', ') || 'unknown'}) — attach it to a bug report.`)
+      break
+    }
 
     case 'name': {
       const newName = args.join(' ').trim().slice(0, MAX_PLAYER_NAME_LENGTH)
