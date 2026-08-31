@@ -67,7 +67,21 @@ const mk = async name => {
 const A = await mk('Alice')
 await new Promise(r => setTimeout(r, 9000))
 const B = await mk('Bob')
-await new Promise(r => setTimeout(r, 9000))
+
+// Founder collisions on slow runners resolve via demote→rejoin; wait for
+// BOTH peers to actually share a sea before the clock starts
+const converged = async () => {
+  const [a, b] = await Promise.all([A, B].map(p => p.evaluate(() =>
+    ({ n: window.__game?.sim?.players.size ?? 0, live: window.__game?.lockstep?._selfLive ?? false }))))
+  return a.n === 2 && b.n === 2 && a.live && b.live
+}
+{
+  const deadline = Date.now() + 90000
+  while (Date.now() < deadline && !(await converged())) {
+    await new Promise(r => setTimeout(r, 2000))
+  }
+  if (!(await converged())) failures.push('peers never converged onto one sea')
+}
 
 await A.keyboard.down('w'); await B.keyboard.down('w')
 for (let i = 0; i < RUN_SECS / 5; i++) {
