@@ -27,6 +27,25 @@ const diagCollector = {
 // version.json rides with every deploy so running clients can notice a newer
 // build shipped and prompt a refresh (their protocol version keeps them from
 // ever MEETING newer peers — this is how they find out why the sea is quiet).
+// Dev/CI mock of the production TURN-credentials endpoint, in Cloudflare's
+// real response shape (iceServers is an ARRAY) — a malformed-shape regression
+// here once broke every RTCPeerConnection in production while CI stayed
+// green, because localhost never had the endpoint at all.
+const turnCredsMock = {
+  name: 'turn-creds-mock',
+  configureServer(server) {
+    server.middlewares.use('/turn-creds', (_req, res) => {
+      res.setHeader('Content-Type', 'application/json')
+      res.end(JSON.stringify({
+        iceServers: [
+          { urls: ['stun:stun.cloudflare.com:3478'] },
+          { urls: ['turn:turn.example.invalid:3478?transport=udp'], username: 'mock', credential: 'mock' },
+        ],
+      }))
+    })
+  },
+}
+
 const versionFile = {
   name: 'version-file',
   configureServer(server) {
@@ -58,5 +77,5 @@ export default defineConfig({
     port: 3000,
     open: false,
   },
-  plugins: [diagCollector, versionFile],
+  plugins: [diagCollector, versionFile, turnCredsMock],
 })
