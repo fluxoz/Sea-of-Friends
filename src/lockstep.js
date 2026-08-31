@@ -152,11 +152,11 @@ export class Lockstep {
       if (this.state !== 'running' || typeof data.t !== 'number') return
       const own = this._hashes.get(data.t)
       if (own === undefined) return
-      if (own === data.h) {
+      if (own.h === data.h) {
         this._forkStreak = 0
         return
       }
-      this.hooks.onDesync(pid, data.t)
+      this.hooks.onDesync(pid, data.t, own.pp, data.pp)
       // Partition healing: a network split leaves two live seas with the
       // SAME foundedAt that ejected each other; when connectivity returns,
       // their hashes disagree forever. After a persistent streak, exactly
@@ -179,8 +179,12 @@ export class Lockstep {
       // The crew is agreeing on OUR departure — we stalled too long and got
       // ejected. Continuing would fork the timeline (our roster still thinks
       // we're the orderer), so demote and rejoin from a fresh snapshot.
+      // Spoof guard: a forged report about us is only credible if our
+      // confirmed timeline has ACTUALLY been stalled — a healthy peer
+      // ignores it (a griefer could otherwise bounce anyone at will).
       if (data.p === this.selfId && this.state === 'running') {
-        this._demote()
+        const stalled = performance.now() - this._confirmedAt > 3000
+        if (stalled) this._demote()
         return
       }
       const entry = this.roster.get(data.p)
@@ -500,13 +504,14 @@ export class Lockstep {
     // n/low describe our crew so a healed partition can pick a winner.
     if (t % HASH_EVERY === 0) {
       const h = this.hooks.getHash()
-      this._hashes.set(t, h)
+      const pp = this.hooks.getHashParts?.() ?? null
+      this._hashes.set(t, { h, pp })
       if (this._hashes.size > 12) {
         const oldest = Math.min(...this._hashes.keys())
         this._hashes.delete(oldest)
       }
       this.network.sendHashMsg({
-        t, h, f: this.foundedAt,
+        t, h, pp, f: this.foundedAt,
         n: this._activeCount(), low: this._orderer(),
       })
     }

@@ -24,6 +24,7 @@ import { Powerups, POWERUP_TYPES } from './powerups.js'
 import { Forts } from './forts.js'
 import { WorldMap } from './map.js'
 import { Sim, FIXED_DT, TICK_MS } from './sim.js'
+import { APP_VERSION } from './network.js'
 import { Lockstep } from './lockstep.js'
 
 /** Points used to draw the aim-mode trajectory preview. */
@@ -384,14 +385,34 @@ export class Game {
           `🗺 Charts received from the crew — world ${(snap.seed >>> 0).toString(16)}`)
       },
       getHash: () => this.sim.hash(),
+      getHashParts: () => this.sim.lastHashParts ?? null,
       onStall: blockers => this._showStall(blockers),
-      onDesync: (pid, tick) => {
+      onDesync: (pid, tick, ownParts, theirParts) => {
+        // Forensics first (always, even while the feed is throttled): name
+        // the diverged subsystem and keep a downloadable evidence bundle.
+        const guilty = ownParts && theirParts
+          ? Object.keys(ownParts).filter(k => ownParts[k] !== theirParts[k])
+          : []
+        if (!this._desyncBundle) {
+          this._desyncBundle = {
+            version: APP_VERSION, tick, peer: pid, guilty,
+            ownParts, theirParts,
+            confirmedSnap: this.lockstep?._confirmedSnap ?? null,
+            recentInputs: [...(this.lockstep?.inputs ?? new Map())].map(([id, buf]) =>
+              [id, [...buf.entries()].filter(([t]) => t > tick - 80)]),
+            capturedAt: new Date().toISOString(),
+          }
+          window.__desyncBundle = this._desyncBundle
+          console.error('[desync] diverged subsystems:', guilty.join(', ') || 'unknown',
+            '— bundle at window.__desyncBundle')
+        }
         const now = performance.now()
         if (now - this._lastDesyncMsg < 30000) return
         this._lastDesyncMsg = now
+        const what = guilty.length ? ` (diverged: ${guilty.join(', ')})` : ''
         this.onSystemMessage?.(
-          `⚠ DESYNC: ${this._resolveName(pid)}'s sea disagrees with yours at tick ${tick} — `
-          + `a modified client or a rare engine difference`)
+          `⚠ DESYNC: ${this._resolveName(pid)}'s sea disagrees with yours at tick ${tick}${what} — `
+          + `/desync downloads the evidence bundle`)
       },
       onSelfJoined: () => {
         this._playing = true
