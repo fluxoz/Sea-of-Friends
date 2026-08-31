@@ -36,6 +36,7 @@ const LEAVE_WAIT_MS = 1500
 const STALL_TICKS   = 8        // behind-schedule threshold before "waiting…"
 const PREDICT_MAX   = 40       // prediction window: 2 s of ticks past confirmed
 const EJECT_MS      = 6000     // confirmed frozen this long → drop the blockers
+const PARK_GRACE_MS = 45000    // a dropped peer's ship holds station this long
 
 export class Lockstep {
   /**
@@ -78,16 +79,22 @@ export class Lockstep {
     this._predDirty = false        // a real input landed inside the window
     this._predBase  = new Map()    // pid → last real packet (prediction base)
     this._confirmedAt = performance.now()
-    // Test hook: ?lagms=250 delays inbound input delivery (rollback torture)
-    this._testLag = typeof location !== 'undefined'
-      ? +(new URLSearchParams(location.search).get('lagms') || 0) : 0
+    // Test hooks: ?lagms=250 delays inbound input delivery (rollback
+    // torture); ?parkms=5000 shortens the reconnect grace for CI
+    const params = typeof location !== 'undefined'
+      ? new URLSearchParams(location.search) : new Map()
+    this._testLag = +(params.get('lagms') || 0)
+    this._parkGrace = +(params.get('parkms') || 0) || PARK_GRACE_MS
 
     /** @type {Map<string, {start:number, end:number|null, reports?:Map, leaveStarted?:number}>} */
     this.roster = new Map()
     /** @type {Map<string, Map<number, object>>} pid → tick → input packet */
     this.inputs = new Map()
     this._pendingJoins = []      // orderer: pids awaiting a join command
+    this._pendingCmds  = []      // orderer: park/drop commands to embed
     this._sentCmdsFor  = new Set()
+    this._parkExpiry   = new Map()  // pid → wall deadline for a parked ship
+    this._deliberate   = new Set()  // peers that said goodbye (skip parking)
     this._hashes = new Map()     // tick → own hash
 
     this._wire()
@@ -149,6 +156,10 @@ export class Lockstep {
         this._demote()
         return
       }
+      // A YOUNGER fork's hashes are not comparable to ours and they will
+      // demote themselves — comparing would spray phantom desyncs (and the
+      // fork-streak rule must never trigger across different foundings)
+      if (typeof data.f === 'number' && data.f > this.foundedAt) return
       if (this.state !== 'running' || typeof data.t !== 'number') return
       const own = this._hashes.get(data.t)
       if (own === undefined) return
@@ -197,6 +208,9 @@ export class Lockstep {
     }
 
     net.onPeerGone = pid => this._beginLeave(pid)
+
+    // A peer that says goodbye is quitting on purpose — no parking grace
+    net.onBye = pid => this._deliberate.add(pid)
   }
 
   _receiveInput(pid, packet) {
@@ -482,6 +496,9 @@ export class Lockstep {
             // Ejected while alive (we stalled too long): go re-join
             if (cmd.d === this.selfId) this._selfLive = false
           }
+          // {p}: park — the sim anchors the ship; roster end was already
+          // agreed in the departure settlement, so nothing changes here
+          if (cmd.p) this._sentCmdsFor.delete(cmd.p)
         }
       }
     }
@@ -530,10 +547,13 @@ export class Lockstep {
       for (const join of this._pendingJoins) {
         if (!this._sentCmdsFor.has(join.pid)) {
           this._sentCmdsFor.add(join.pid)
+          this._parkExpiry.delete(join.pid)   // coming back aboard — unpark
           cmds.push({ j: join.pid, c: join.cls })
         }
       }
       this._pendingJoins = []
+      cmds.push(...this._pendingCmds)
+      this._pendingCmds = []
     }
     return cmds
   }
@@ -578,14 +598,32 @@ export class Lockstep {
       entry.end = Math.max(maxLast, entry.start - 1)
       entry.leaveStarted = null
 
-      // The orderer schedules the deterministic removal of their ship
+      // The orderer schedules what happens to their ship. A deliberate
+      // goodbye (quit button, page close) drops it at once; a silent
+      // disconnect PARKS it — the ship holds station for PARK_GRACE_MS so a
+      // wifi blip puts the captain back aboard, purse intact. Expiry turns
+      // the park into a normal drop.
       if (this._orderer() === this.selfId || this._orderer() === pid) {
         this._pendingJoins = this._pendingJoins.filter(j => j.pid !== pid)
       }
       if (this._ordererAfter(pid) === this.selfId) {
-        // Embed the drop in our next input packet
-        const origTake = this._takeCmds.bind(this)
-        this._takeCmds = t => { this._takeCmds = origTake; return [...origTake(t), { d: pid }] }
+        if (this._deliberate.has(pid)) {
+          this._pendingCmds.push({ d: pid })
+          this._deliberate.delete(pid)
+        } else {
+          this._pendingCmds.push({ p: pid })
+          this._parkExpiry.set(pid, now + this._parkGrace)
+        }
+      }
+    }
+
+    // Parked ships whose captains never came back go down for real
+    if (this._orderer() === this.selfId) {
+      for (const [pid, deadline] of this._parkExpiry) {
+        if (now >= deadline) {
+          this._parkExpiry.delete(pid)
+          this._pendingCmds.push({ d: pid })
+        }
       }
     }
   }

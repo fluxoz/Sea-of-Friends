@@ -20,6 +20,30 @@ const ICE_SERVERS = [
 ]
 
 /**
+ * TURN as a last resort: symmetric-NAT pairs can't be traversed with STUN
+ * alone. The deployment mints short-lived credentials at /turn-creds
+ * (a Pages Function); ICE only uses relay candidates when direct paths
+ * fail, so this costs nothing for the common case. Local dev and failed
+ * fetches degrade to STUN-only — exactly the old behaviour.
+ */
+let _turnServers = []
+export async function fetchTurnServers(timeoutMs = 2500) {
+  try {
+    const ctl = new AbortController()
+    const timer = setTimeout(() => ctl.abort(), timeoutMs)
+    const r = await fetch('/turn-creds', { signal: ctl.signal })
+    clearTimeout(timer)
+    if (!r.ok) return []
+    const creds = await r.json()
+    const servers = creds.iceServers ? [creds.iceServers] : []
+    _turnServers = servers
+    return servers
+  } catch {
+    return []
+  }
+}
+
+/**
  * The protocol version is part of the app id, so peers on different builds
  * NEVER meet: a mixed-build crew would desync by construction (the sims
  * differ). Any change to sim/netcode behaviour must bump package.json's
@@ -54,16 +78,26 @@ export class NetworkManager {
     this.onHashMsg = null     // (pid, {t, h, f})
     this.onLastIn  = null     // (pid, {p, l})
     this.onRelayIn = null     // (pid, {rows})
+    this.onBye     = null     // (pid) — deliberate quit, skip parking grace
 
-    // ?relays=ws://host:port lets tests (and LAN crews) point peer discovery
-    // at their own tracker instead of the public BitTorrent ones
+    // Peer discovery: our own always-up signaling relay (a Durable Object
+    // speaking the WebTorrent tracker protocol) first, the public trackers
+    // as fallback — they're the flakiest link in the stack. ?relays=…
+    // overrides everything (tests, LAN crews).
+    const DEFAULT_RELAYS = [
+      'wss://sea-of-friends-signal.fluxoz.workers.dev',
+      'wss://tracker.webtorrent.dev',
+      'wss://tracker.openwebtorrent.com',
+      'wss://tracker.btorrent.xyz',
+    ]
     const relays = typeof location !== 'undefined'
       ? new URLSearchParams(location.search).get('relays') : null
     const room = joinRoom(
       {
         appId: APP_ID,
-        rtcConfig: { iceServers: ICE_SERVERS },
-        ...(relays ? { relayUrls: relays.split(',') } : {}),
+        rtcConfig: { iceServers: [...ICE_SERVERS, ..._turnServers] },
+        relayUrls: relays ? relays.split(',') : DEFAULT_RELAYS,
+        relayRedundancy: 4,
       },
       roomId,
     )
@@ -80,6 +114,7 @@ export class NetworkManager {
     const [sendHash, onHash]   = room.makeAction('hs')
     const [sendLastIn, onLastIn]   = room.makeAction('li')
     const [sendRelayIn, onRelayIn] = room.makeAction('ri')
+    const [sendBye, onBye]         = room.makeAction('by')
 
     this._sendInfo   = sendInfo
     this._sendChat   = sendChat
@@ -140,6 +175,7 @@ export class NetworkManager {
     this.sendHashMsg = data => sendHash(data)
     this.sendLastIn  = data => sendLastIn(data)
     this.sendRelayIn = data => sendRelayIn(data)
+    this.sendBye     = () => { try { sendBye({}) } catch { /* leaving anyway */ } }
 
     // ── Peer lifecycle ─────────────────────────────────────────────────────
     room.onPeerJoin(peerId => {
@@ -176,6 +212,7 @@ export class NetworkManager {
     onHash((data, peerId)    => { if (!this.blackhole && this.onHashMsg) this.onHashMsg(peerId, data) })
     onLastIn((data, peerId)  => { if (!this.blackhole && this.onLastIn)  this.onLastIn(peerId, data) })
     onRelayIn((data, peerId) => { if (!this.blackhole && this.onRelayIn) this.onRelayIn(peerId, data) })
+    onBye((_d, peerId)       => { if (this.onBye) this.onBye(peerId) })
 
     // ── Latency ping / pong ────────────────────────────────────────────────
     onPing((_data, peerId) => { sendPong({}, peerId) })

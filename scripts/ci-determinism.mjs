@@ -11,7 +11,7 @@ import { spawn } from 'node:child_process'
 import { Server } from 'bittorrent-tracker'
 import { chromium } from 'playwright'
 
-const TRACKER_PORT = 8009
+const TRACKER_PORT = 8019
 const VITE_PORT    = 4519
 const RUN_SECS     = 30
 

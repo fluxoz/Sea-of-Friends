@@ -296,6 +296,11 @@ RTS multiplayer, adapted to the open sea:
   disconnect — the ejected peer detects its own departure, demotes, and
   rejoins automatically from a fresh snapshot when it recovers.
   Backgrounded tabs keep ticking via a timer and never trigger any of this.
+- **Wifi blips are lossless.** A silently dropped peer's ship is **parked**
+  — sails struck, holding station, still part of the world — for 45 s.
+  Reconnect inside the grace and you're back at the helm of your own ship,
+  purse intact; only after expiry (or a deliberate quit, which says goodbye
+  on the way out) does the ship go down and the purse drift overboard.
 
 ### ⚙ CI
 
@@ -310,9 +315,15 @@ One careless `Math.random()` in sim code fails CI, not a crew at sea.
 The game is static files + P2P — hosting is just a CDN. Production lives on
 Cloudflare Pages at **https://sea-of-friends.com** (deploy with
 `npx wrangler pages deploy dist --project-name sea-of-friends`). Peer
-discovery uses public BitTorrent trackers and NAT traversal uses public
-STUN only — zero servers, zero running cost. LAN/offline crews can point at
-their own tracker with `?relays=ws://host:port`.
+discovery leads with our own always-up signaling relay — a ~100-line
+Durable Object speaking the WebTorrent tracker protocol
+(`workers/signal/`) — with the public BitTorrent trackers as fallback.
+NAT traversal uses public STUN, plus **on-demand Cloudflare TURN** for the
+symmetric-NAT pairs STUN can't crack: a Pages Function
+(`functions/turn-creds.js`) mints short-lived relay credentials, and ICE
+only touches them when direct paths fail. Everything sits in free tiers at
+friends scale. LAN/offline crews can point at their own tracker with
+`?relays=ws://host:port`.
 
 ### 🎤 Voice
 

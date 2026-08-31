@@ -2,7 +2,7 @@
  * main.js – Entry point: wires the UI overlays to the Game and NetworkManager.
  */
 import { Game }           from './game.js'
-import { NetworkManager, APP_VERSION } from './network.js'
+import { NetworkManager, APP_VERSION, fetchTurnServers } from './network.js'
 import { ProximityAudio } from './audio.js'
 import { preloadAssets }  from './assets.js'
 
@@ -129,6 +129,10 @@ async function init() {
   nameScreen.style.display = 'flex'
   nameInput.focus()
   watchForNewVersion()
+  // Warm the TURN credentials while the captain reads the menu, so joining
+  // never waits on it; STUN-only if it fails (local dev, offline)
+  fetchTurnServers()
+  window.addEventListener('pagehide', () => network?.sendBye?.())
 }
 
 // ── Settings panel ────────────────────────────────────────────────────────────
@@ -690,6 +694,8 @@ const quitBtn = document.getElementById('quit-btn')
 let quitArmTimer = null
 
 function quitToMenu() {
+  // Tell the crew this is deliberate — no reconnect grace, drop the ship now
+  network?.sendBye?.()
   // Order matters: stop the sim first, then leave the room (the crew's
   // departure protocol drops our ship — and our purse — deterministically)
   if (audio) { try { audio.disable() } catch {} }

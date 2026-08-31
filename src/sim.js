@@ -75,7 +75,15 @@ export class Sim {
   sortedIds() { return [...this.players.keys()].sort() }
 
   addPlayer(pid, cls = 'frigate') {
-    if (this.players.has(pid)) return
+    const existing = this.players.get(pid)
+    if (existing) {
+      // A parked captain coming back aboard — same ship, same purse
+      if (existing.parked) {
+        existing.parked = false
+        this.hooks.feed(`⚓ ${this.hooks.resolveName(pid)} is back at the helm`)
+      }
+      return
+    }
     const spawn = this._pickSpawn()
     const ship = new Ship(this.scene, pid.slice(0, 8), 0xc8a96e,
       pid === this.hooks.selfId, { shipClass: cls })
@@ -91,8 +99,17 @@ export class Sim {
       gold: 0, k: 0, d: 0,
       rudder: 0, heldHeading: null,
       respawnT: -1, invulnT: 0, lastAttacker: null, lastThud: -10,
+      parked: false,
     })
     this.hooks.feed(`⚓ ${this.hooks.resolveName(pid)} joined the crew`)
+  }
+
+  /** Their connection dropped: anchor the ship and wait for the captain. */
+  parkPlayer(pid) {
+    const p = this.players.get(pid)
+    if (!p || p.parked) return
+    p.parked = true
+    this.hooks.feed(`⚓ ${this.hooks.resolveName(pid)} lost the helm — their ship holds station…`)
   }
 
   removePlayer(pid) {
@@ -137,6 +154,7 @@ export class Sim {
     // Roster changes ride inside the input stream → same tick on every peer
     for (const cmd of cmds) {
       if (cmd.j) this.addPlayer(cmd.j, cmd.c)
+      if (cmd.p) this.parkPlayer(cmd.p)
       if (cmd.d) this.removePlayer(cmd.d)
     }
 
@@ -162,6 +180,17 @@ export class Sim {
           p.respawnT = -1
           if (pid === this.hooks.selfId) this.hooks.onLocal({ type: 'respawn' })
         }
+        continue
+      }
+
+      // A parked ship (captain disconnected) strikes sail and holds station
+      if (p.parked) {
+        const step = Math.min(Math.abs(p.rudder), 3.0 * FIXED_DT)
+        p.rudder += p.rudder > 0 ? -step : step
+        ship.updateLocal(FIXED_DT, -1, 0, this.wind)
+        this._collideIslands(p)
+        ship.setWaveHeight(waveHeight(ship.position.x, ship.position.z, simTime))
+        if (ship.hp <= 0) this._sinkPlayer(p, p.lastAttacker)
         continue
       }
 
@@ -520,7 +549,7 @@ export class Sim {
         br: p.buffReload, ba: p.buffArmor,
         am: p.ammoShots, aa: p.autoShots, g: p.gold, k: p.k, d: p.d,
         rd: p.rudder, hh: p.heldHeading,
-        rt: p.respawnT, iv: p.invulnT, la: p.lastAttacker,
+        rt: p.respawnT, iv: p.invulnT, la: p.lastAttacker, pk: p.parked ? 1 : 0,
       })
     }
     return {
@@ -583,6 +612,7 @@ export class Sim {
       p.gold = row.g; p.k = row.k; p.d = row.d
       p.rudder = row.rd ?? 0; p.heldHeading = row.hh ?? null
       p.respawnT = row.rt; p.invulnT = row.iv; p.lastAttacker = row.la
+      p.parked = !!row.pk
     }
   }
 
@@ -627,6 +657,7 @@ export class Sim {
         gold: row.g, k: row.k, d: row.d,
         rudder: row.rd ?? 0, heldHeading: row.hh ?? null,
         respawnT: row.rt, invulnT: row.iv, lastAttacker: row.la, lastThud: -10,
+        parked: !!row.pk,
       })
     }
   }
@@ -648,6 +679,7 @@ export class Sim {
         .int(p.gold).int(p.k).int(p.d).int(p.ammoShots).int(p.autoShots)
         .num(p.reloadP).num(p.reloadS).num(p.reloadB)
         .num(p.rudder).num(p.heldHeading ?? 0).int(p.heldHeading === null ? 1 : 0)
+        .int(p.parked ? 1 : 0)
     }
     const ai = new HashAcc(); this.aiFleet.hash(ai)
     const ft = new HashAcc(); this.forts.hash(ft)
