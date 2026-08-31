@@ -35,7 +35,12 @@ export async function fetchTurnServers(timeoutMs = 2500) {
     clearTimeout(timer)
     if (!r.ok) return []
     const creds = await r.json()
-    const servers = creds.iceServers ? [creds.iceServers] : []
+    // Cloudflare returns iceServers as an ARRAY of RTCIceServer entries —
+    // wrapping it again produces a malformed entry that kills every
+    // RTCPeerConnection construction
+    const raw = Array.isArray(creds.iceServers) ? creds.iceServers
+      : creds.iceServers ? [creds.iceServers] : []
+    const servers = raw.filter(s => s && (typeof s.urls === 'string' || Array.isArray(s.urls)))
     _turnServers = servers
     return servers
   } catch {
