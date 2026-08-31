@@ -88,7 +88,8 @@
     #join-panel {
       position: relative;
       display: flex; flex-direction: column; gap: 0.7rem;
-      padding: 3.4rem 3.4rem 3.8rem;
+      width: min(460px, 94vw);
+      padding: 3.4rem 4rem 3.8rem;
       margin: 0.4rem 0;
       color: #4a3018;
       background: url('/assets/extra/scroll.svg');
@@ -146,7 +147,9 @@
       font-size: 0.72rem; color: #6e532e;
       font-family: 'IM Fell English', Georgia, serif;
       align-self: center;
+      max-width: 290px; text-align: left; line-height: 1.35;
     }
+    #list-public-row label { cursor: inherit; }
     #list-public-row input { accent-color: #8a2f22; width: 0.9rem; height: 0.9rem; }
     #public-seas {
       max-height: 92px; overflow-y: auto;
@@ -802,7 +805,7 @@
       </div>
       <div id="list-public-row">
         <input type="checkbox" id="list-public" />
-        <label for="list-public">List this sea publicly — strangers may join</label>
+        <label for="list-public" title="Your room appears on everyone's menu — anyone can join">List this sea publicly</label>
       </div>
       <div id="public-seas">
         <div id="public-seas-title">⚓ Seas taking crew</div>
