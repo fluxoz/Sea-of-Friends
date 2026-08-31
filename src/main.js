@@ -84,7 +84,7 @@ const unreadCount  = { crew: 0, system: 0 }
 
 // ── Settings (render/audio side only — never simulation state) ────────────────
 const SETTINGS_KEY = 'sof-settings'
-const settings = { fps: false, shadows: 'high', sfxVolume: 1 }
+const settings = { fps: false, shadows: 'high', sfxVolume: 1, listPublic: false }
 try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}')) } catch { /* fresh */ }
 
 function applyAndSaveSettings() {
@@ -100,6 +100,9 @@ const COMMANDS = [
   { cmd: '/me',    args: '<action>',  desc: 'Emote an action' },
   { cmd: '/roll',  args: '[max]',     desc: 'Roll dice (default d100)' },
   { cmd: '/channel', args: '<name|off>', desc: 'Join/leave a private crew voice channel' },
+  { cmd: '/votekick', args: '<name>', desc: 'Vote to kick a captain (majority of the crew)' },
+  { cmd: '/mute',  args: '<name>',    desc: 'Mute/unmute a captain (voice + chat)' },
+  { cmd: '/desync', args: '',         desc: 'Download the desync evidence bundle' },
 ]
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
@@ -157,6 +160,50 @@ async function init() {
   fpsBox.addEventListener('change', () => { settings.fps = fpsBox.checked; applyAndSaveSettings() })
   shadows.addEventListener('change', () => { settings.shadows = shadows.value; applyAndSaveSettings() })
   sfxVol.addEventListener('input', () => { settings.sfxVolume = sfxVol.value / 100; applyAndSaveSettings() })
+}
+
+// ── Public session board ──────────────────────────────────────────────────────
+{
+  const listBox = document.getElementById('list-public')
+  const seasEl  = document.getElementById('public-seas')
+  listBox.checked = !!settings.listPublic
+  listBox.addEventListener('change', () => {
+    settings.listPublic = listBox.checked
+    applyAndSaveSettings()
+    if (game) game.listPublicly = listBox.checked
+  })
+
+  const ageText = ticks => {
+    const mins = Math.round(ticks / 20 / 60)
+    if (mins < 60) return `${mins} min at sea`
+    return `${(mins / 60).toFixed(1)} h at sea`
+  }
+
+  const refresh = async () => {
+    if (nameScreen.style.display === 'none') return
+    try {
+      const r = await fetch('https://sea-of-friends-signal.fluxoz.workers.dev/board/list?v=' + encodeURIComponent(APP_VERSION))
+      if (!r.ok) return
+      const { seas } = await r.json()
+      for (const row of [...seasEl.querySelectorAll('.sea-row')]) row.remove()
+      for (const sea of seas ?? []) {
+        const row = document.createElement('div')
+        row.className = 'sea-row'
+        row.innerHTML = `<span class="sea-name"></span><span class="sea-meta"></span>`
+        row.querySelector('.sea-name').textContent = '⛵ ' + sea.room
+        row.querySelector('.sea-meta').textContent =
+          `${sea.players} sailor${sea.players !== 1 ? 's' : ''} · ${ageText(sea.age)}`
+        row.addEventListener('click', () => {
+          roomInput.value = sea.room
+          roomInput.focus()
+        })
+        seasEl.appendChild(row)
+      }
+      seasEl.classList.toggle('has-seas', (seas ?? []).length > 0)
+    } catch { /* board down — menu works without it */ }
+  }
+  setInterval(refresh, 20000)
+  setTimeout(refresh, 1500)
 }
 
 // ── Menu burn-up transition ───────────────────────────────────────────────────
@@ -282,7 +329,12 @@ function startGame(playerName) {
 
   // Battle notices (kills, sinkings) go to the system chat channel
   game.onSystemMessage = addSystemMessage
+  game.onKicked = () => {
+    addSystemMessage('⚖ You have been voted off the ship. Returning to the menu…')
+    setTimeout(() => quitToMenu(), 4000)
+  }
 
+  game.listPublicly = !!settings.listPublic
   game.start(playerName, color, network, shipClass)
 
   // Debug handle (used by smoke tests; handy in the browser console too)
@@ -290,6 +342,7 @@ function startGame(playerName) {
 
   // Wire up chat network handler
   network.onChat = (peerId, data) => {
+    if (game.muted.has(peerId)) return   // muted: neither chat nor emotes
     const peer  = network.getPeer(peerId)
     const name  = peer?.name  || peerId.slice(0, 8)
     const color = peer?.color || '#aaa'
@@ -433,6 +486,14 @@ function sendChat() {
  * Handle a '/' slash command entered by the local player.
  * @param {string} raw  – the full input string including the leading '/'
  */
+/** Find a peer id by (case-insensitive) captain name. */
+function resolvePeerByName(name) {
+  for (const [pid, peer] of network?.peers ?? []) {
+    if ((peer.name ?? '').toLowerCase() === name) return pid
+  }
+  return null
+}
+
 function handleCommand(raw) {
   const parts   = raw.slice(1).trim().split(/\s+/)
   const cmd     = parts[0].toLowerCase()
@@ -446,6 +507,24 @@ function handleCommand(raw) {
     case 'clear':
       while (chatMessages.firstChild) chatMessages.removeChild(chatMessages.firstChild)
       break
+
+    case 'votekick': {
+      const who = args.join(' ').trim().toLowerCase()
+      if (!who) { addSystemMessage('Usage: /votekick <captain name>'); break }
+      const pid = resolvePeerByName(who)
+      if (!pid) { addSystemMessage(`No captain called "${who}" on this sea.`); break }
+      game.castVote(pid)
+      break
+    }
+
+    case 'mute': {
+      const who = args.join(' ').trim().toLowerCase()
+      if (!who) { addSystemMessage('Usage: /mute <captain name>'); break }
+      const pid = resolvePeerByName(who)
+      if (!pid) { addSystemMessage(`No captain called "${who}" on this sea.`); break }
+      game.toggleMute(pid)
+      break
+    }
 
     case 'desync': {
       const bundle = window.__desyncBundle

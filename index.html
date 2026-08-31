@@ -140,6 +140,36 @@
     #join-btn:active { transform: translateY(0); }
     #join-btn:disabled { opacity: 0.5; transform: none; filter: none; }
 
+    /* Public listing + board */
+    #list-public-row {
+      display: flex; align-items: center; gap: 0.45rem;
+      font-size: 0.72rem; color: #6e532e;
+      font-family: 'IM Fell English', Georgia, serif;
+      align-self: center;
+    }
+    #list-public-row input { accent-color: #8a2f22; width: 0.9rem; height: 0.9rem; }
+    #public-seas {
+      max-height: 92px; overflow-y: auto;
+      border-top: 1px solid rgba(90, 64, 32, 0.35);
+      padding-top: 0.35rem;
+      display: none;
+    }
+    #public-seas.has-seas { display: block; }
+    #public-seas .sea-row {
+      display: flex; justify-content: space-between; gap: 0.8rem;
+      font-size: 0.78rem; color: #4a3018; padding: 0.14rem 0.3rem;
+      border-radius: 3px;
+      font-family: 'IM Fell English', Georgia, serif;
+    }
+    #public-seas .sea-row:hover { background: rgba(138, 47, 34, 0.14); }
+    #public-seas .sea-name { font-weight: bold; }
+    #public-seas .sea-meta { opacity: 0.75; white-space: nowrap; }
+    #public-seas-title {
+      font-size: 0.66rem; color: #6e532e; text-transform: uppercase;
+      letter-spacing: 0.14em; margin-bottom: 0.15rem;
+      font-family: 'IM Fell English', Georgia, serif;
+    }
+
     /* Ship class selector */
     #ship-select {
       display: flex; gap: 0.5rem; justify-content: center;
@@ -218,7 +248,7 @@
     }
     .latency-row {
       display: grid;
-      grid-template-columns: minmax(6em, 1fr) 2.2em 2.2em 3em 3.6em;
+      grid-template-columns: minmax(6em, 1fr) 2.2em 2.2em 3em 3.6em 3.2em;
       column-gap: 0.45em; align-items: center;
       padding: 0.25rem 0.8rem;
       font-size: 0.8rem; color: #ddd;
@@ -234,6 +264,16 @@
       padding: 0.3rem 0.8rem;
     }
     .latency-row-ms { color: #4caf50; font-size: 0.75rem; }
+    #latency-list { pointer-events: all; }
+    .latency-row-actions { display: flex; gap: 0.25rem; justify-content: flex-end; }
+    .latency-row-actions button {
+      background: none; border: none; padding: 0 0.1rem;
+      font-size: 0.78rem; cursor: pointer; opacity: 0.45;
+      transition: opacity 0.15s;
+    }
+    .latency-row-actions button:hover { opacity: 1; }
+    .latency-row-actions .crew-mute.active { opacity: 1; filter: drop-shadow(0 0 3px #f44336); }
+    .latency-head .latency-row-actions { visibility: hidden; }
     .latency-row-k, .latency-row-d, .latency-row-g { color: #c8a96e; font-size: 0.78rem; }
 
     #compass {
@@ -760,6 +800,13 @@
           <div class="ship-desc">Slow &amp; devastating<br>5+4 guns · 150 hull</div>
         </div>
       </div>
+      <div id="list-public-row">
+        <input type="checkbox" id="list-public" />
+        <label for="list-public">List this sea publicly — strangers may join</label>
+      </div>
+      <div id="public-seas">
+        <div id="public-seas-title">⚓ Seas taking crew</div>
+      </div>
       <button id="join-btn">⚓ Set Sail</button>
     </div>
     <div id="features">
@@ -811,6 +858,7 @@
         <span title="Deaths">☠</span>
         <span title="Gold">🪙</span>
         <span title="Ping">⏱</span>
+        <span class="latency-row-actions"></span>
       </div>
     </div>
     <div id="compass">N</div>
