@@ -928,16 +928,23 @@ export class Game {
     const lp   = this.localPlayer
     const v    = BALL_SPEED * (lp && lp.ammoShots > 0 ? 1.35 : 1)
 
-    let x, z
-    if (battery === 'bow') {
+    // The arc starts at the battery's actual muzzle (following the barrel's
+    // swivel and elevation), not the hull centre
+    let x, y, z
+    if (!this._muzzleTmp) this._muzzleTmp = new THREE.Vector3()
+    const muzzle = me.getMuzzleWorld(battery, this._muzzleTmp)
+    if (muzzle) {
+      x = muzzle.x; y = muzzle.y; z = muzzle.z
+    } else if (battery === 'bow') {
       x = p.x + fwd.x * me.halfLength * 0.7
       z = p.z + fwd.z * me.halfLength * 0.7
+      y = p.y + me.deckHeight
     } else {
       const sideAngle = rot + battery * Math.PI / 2
       x = p.x + Math.sin(sideAngle) * (me.halfWidth + 0.8)
       z = p.z + Math.cos(sideAngle) * (me.halfWidth + 0.8)
+      y = p.y + me.deckHeight
     }
-    let y = p.y + me.deckHeight
     let vx = Math.sin(yaw) * v * cosE + fwd.x * me.speed
     let vz = Math.cos(yaw) * v * cosE + fwd.z * me.speed
     let vy = Math.sin(this._aimElev) * v
