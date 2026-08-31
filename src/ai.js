@@ -249,8 +249,13 @@ export class AIFleet {
       x: u.ship.position.x, z: u.ship.position.z,
       r: u.ship.rotationY, sp: u.ship.speed, sl: u.ship.sail,
       hp: u.ship.hp, sk: u.ship.sinking ? u.ship._sinkT : -1,
-      st: u.ship._statusT, lk: u.ship._leaks, rg: u.ship._rigDmg,
-      wd: u.wander, rl: u.reload, rt: u.respawnT, lh: u.lastHitBy,
+      st: u.ship._statusT,
+      // COPIES, never references: rollback retains this snapshot while the
+      // live sim keeps mutating — aliased arrays here corrupted ghost leak
+      // state on every rollback and desynced the fleet across peers
+      lk: u.ship._leaks.slice(), rg: u.ship._rigDmg.slice(),
+      wd: u.wander ? { x: u.wander.x, z: u.wander.z } : null,
+      rl: u.reload, rt: u.respawnT, lh: u.lastHitBy,
     }))
   }
 
@@ -265,13 +270,13 @@ export class AIFleet {
       s.sail  = r.sl
       s.hp    = r.hp
       s._statusT = r.st
-      s._leaks  = r.lk ?? []
-      s._rigDmg = r.rg ?? []
+      s._leaks  = (r.lk ?? []).slice()
+      s._rigDmg = (r.rg ?? []).slice()
       if (r.sk >= 0) { s.sinking = true; s._sinkT = r.sk; s._hpSprite.visible = false }
       else { s.sinking = false; s._sinkT = 0; s.group.visible = true }
       s.capturePrev()
       s._redrawHealthBar()
-      u.wander = r.wd
+      u.wander = r.wd ? { x: r.wd.x, z: r.wd.z } : null
       u.reload = r.rl
       u.respawnT = r.rt
       u.lastHitBy = r.lh
