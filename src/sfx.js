@@ -89,8 +89,8 @@ export class SFX {
   }
 
   /** Play the shared noise buffer through a filter + gain envelope. */
-  _noiseBurst({ dur, filterType, freqStart, freqEnd, gainPeak, attack = 0.005 }) {
-    const t0 = this.ctx.currentTime
+  _noiseBurst({ dur, filterType, freqStart, freqEnd, gainPeak, attack = 0.005, delay = 0 }) {
+    const t0 = this.ctx.currentTime + delay
     const src = this.ctx.createBufferSource()
     src.buffer = this._noise
     src.loop   = true
@@ -130,21 +130,60 @@ export class SFX {
 
   // ── One-shot effects ───────────────────────────────────────────────────────
 
-  /** Cannon blast: deep noise boom + low sine thump. */
-  cannon(dist = 0) {
+  /**
+   * Cannon fire. A broadside is `guns` individual shots, staggered a few
+   * dozen ms apart with per-shot variation (no two guns bark alike), each
+   * a layered voice: sharp crack, chest-punch boom, sub thump, rumble tail.
+   * Distant volleys arrive at the SPEED OF SOUND — you see the flash, then
+   * the thunder rolls in and echoes across the water.
+   */
+  cannon(dist = 0, guns = 1) {
     if (!this.ctx) return
     if (!this._gate('cannon', dist)) return
     this.resume()
     const v = this._vol(dist)
     if (v <= 0) return
-    // Far-away cannons sound duller: drop the filter start frequency
-    const near = Math.max(0.25, 1 - dist / 300)
+    const near = Math.max(0.2, 1 - dist / 300)
+    const travel = dist / 340   // world units ≈ metres; flash first, bang later
+    const n = Math.max(1, Math.min(6, guns | 0))
+    for (let i = 0; i < n; i++) {
+      const delay = travel + (i === 0 ? 0 : i * 0.055 + Math.random() * 0.035)
+      this._cannonShot(v / Math.sqrt(n) * (n > 1 ? 1.25 : 1), near, delay)
+    }
+    // Rolling slap-back off the water for far shots — the shore answers twice
+    if (dist > 120) {
+      const echoV = v * 0.3
+      this._cannonShot(echoV, near * 0.5, travel + 0.28 + Math.random() * 0.08)
+      this._cannonShot(echoV * 0.45, near * 0.35, travel + 0.62 + Math.random() * 0.12)
+    }
+  }
+
+  /** One gun: crack + boom + sub + tail, humanised a touch. */
+  _cannonShot(v, near, delay = 0) {
+    const pitch = 0.92 + Math.random() * 0.16
+    // Crack: the instantaneous report (dulls with distance)
     this._noiseBurst({
-      dur: 0.5, filterType: 'lowpass',
-      freqStart: 260 + 900 * near, freqEnd: 60,
-      gainPeak: 0.9 * v,
+      dur: 0.09, filterType: 'highpass',
+      freqStart: 900 * near * pitch, freqEnd: 2400 * near,
+      gainPeak: 0.5 * v * near, attack: 0.001, delay,
     })
-    this._tone({ type: 'sine', freqStart: 70, freqEnd: 36, dur: 0.4, gainPeak: 0.7 * v })
+    // Boom: the body of the blast
+    this._noiseBurst({
+      dur: 0.42, filterType: 'lowpass',
+      freqStart: (240 + 760 * near) * pitch, freqEnd: 55,
+      gainPeak: 0.85 * v, attack: 0.004, delay,
+    })
+    // Sub thump you feel more than hear
+    this._tone({
+      type: 'sine', freqStart: 62 * pitch, freqEnd: 30,
+      dur: 0.35, gainPeak: 0.6 * v, attack: 0.004, delay,
+    })
+    // Rumble tail rolling away
+    this._noiseBurst({
+      dur: 1.3, filterType: 'lowpass',
+      freqStart: 140, freqEnd: 40,
+      gainPeak: 0.16 * v, attack: 0.05, delay: delay + 0.08,
+    })
   }
 
   /** Cannonball splashdown. */

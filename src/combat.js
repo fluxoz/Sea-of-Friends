@@ -238,7 +238,7 @@ export class Combat {
     if (balls.length && listenerPos) {
       const dist = Math.hypot(balls[0][0] - listenerPos.x, balls[0][2] - listenerPos.z)
       if (kind === 'bolt') this.sfx.ballista(dist)
-      else this.sfx.cannon(dist)
+      else this.sfx.cannon(dist, balls.length)
     }
   }
 
