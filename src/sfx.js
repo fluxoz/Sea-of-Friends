@@ -41,6 +41,21 @@ export class SFX {
 
     this._startAmbient()
     this._scheduleGull()
+    this._loadCannonSamples()
+  }
+
+  /** Real CC0 cannon recordings (rubberduck, OpenGameArt) — decoded async;
+   *  the synthesised voice covers the gap and any load failure. */
+  async _loadCannonSamples() {
+    this._cannonBufs = []
+    for (let i = 1; i <= 5; i++) {
+      try {
+        const r = await fetch(`/assets/sounds/cannon_${i}.ogg`)
+        if (!r.ok) continue
+        const buf = await this.ctx.decodeAudioData(await r.arrayBuffer())
+        this._cannonBufs.push(buf)
+      } catch { /* missing/undecodable — synthesis carries on */ }
+    }
   }
 
   /** Resume the context if the browser suspended it (autoplay policy). */
@@ -158,8 +173,35 @@ export class SFX {
     }
   }
 
-  /** One gun: crack + boom + sub + tail, humanised a touch. */
+  /** One gun. A real recording when loaded (random pick, pitch-varied,
+   *  distance-lowpassed) with a synthesised sub thump and rumble tail
+   *  underneath for weight; pure synthesis as the fallback voice. */
   _cannonShot(v, near, delay = 0) {
+    const bufs = this._cannonBufs
+    if (bufs && bufs.length) {
+      const t0 = this.ctx.currentTime + delay
+      const src = this.ctx.createBufferSource()
+      src.buffer = bufs[(Math.random() * bufs.length) | 0]
+      src.playbackRate.value = 0.9 + Math.random() * 0.22
+      const filter = this.ctx.createBiquadFilter()
+      filter.type = 'lowpass'
+      filter.frequency.value = 500 + 11000 * near * near
+      const gain = this.ctx.createGain()
+      gain.gain.value = Math.min(1, 1.1 * v)
+      src.connect(filter).connect(gain).connect(this._master)
+      src.start(t0)
+      // Weight under the recording: sub thump + rolling tail
+      this._tone({
+        type: 'sine', freqStart: 58, freqEnd: 30,
+        dur: 0.35, gainPeak: 0.4 * v, attack: 0.004, delay,
+      })
+      this._noiseBurst({
+        dur: 1.2, filterType: 'lowpass',
+        freqStart: 130, freqEnd: 40,
+        gainPeak: 0.1 * v, attack: 0.05, delay: delay + 0.1,
+      })
+      return
+    }
     const pitch = 0.92 + Math.random() * 0.16
     // Crack: the instantaneous report (dulls with distance)
     this._noiseBurst({
