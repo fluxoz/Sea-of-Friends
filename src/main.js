@@ -162,10 +162,14 @@ async function init() {
   sfxVol.addEventListener('input', () => { settings.sfxVolume = sfxVol.value / 100; applyAndSaveSettings() })
 }
 
-// ── Public session board ──────────────────────────────────────────────────────
+// ── Public session board (its own menu, off the scroll) ──────────────────────
 {
-  const listBox = document.getElementById('list-public')
-  const seasEl  = document.getElementById('public-seas')
+  const btn     = document.getElementById('public-seas-btn')
+  const panel   = document.getElementById('public-seas-panel')
+  const listEl  = document.getElementById('public-seas-list')
+  const emptyEl = document.getElementById('public-seas-empty')
+  const closeBtn = document.getElementById('public-seas-close')
+  const listBox  = document.getElementById('list-public')
   listBox.checked = !!settings.listPublic
   listBox.addEventListener('change', () => {
     settings.listPublic = listBox.checked
@@ -180,30 +184,49 @@ async function init() {
   }
 
   const refresh = async () => {
-    if (nameScreen.style.display === 'none') return
+    if (!panel.classList.contains('open')) return
     try {
-      const r = await fetch('https://sea-of-friends-signal.fluxoz.workers.dev/board/list?v=' + encodeURIComponent(APP_VERSION))
+      const r = await fetch(
+        'https://sea-of-friends-signal.fluxoz.workers.dev/board/list?v='
+        + encodeURIComponent(APP_VERSION))
       if (!r.ok) return
       const { seas } = await r.json()
-      for (const row of [...seasEl.querySelectorAll('.sea-row')]) row.remove()
+      listEl.replaceChildren()
       for (const sea of seas ?? []) {
         const row = document.createElement('div')
         row.className = 'sea-row'
-        row.innerHTML = `<span class="sea-name"></span><span class="sea-meta"></span>`
-        row.querySelector('.sea-name').textContent = '⛵ ' + sea.room
-        row.querySelector('.sea-meta').textContent =
-          `${sea.players} sailor${sea.players !== 1 ? 's' : ''} · ${ageText(sea.age)}`
+        const name = document.createElement('span')
+        name.className = 'sea-name'
+        name.textContent = '⛵ ' + sea.room
+        const meta = document.createElement('span')
+        meta.className = 'sea-meta'
+        meta.textContent = `${sea.players} sailor${sea.players !== 1 ? 's' : ''} · ${ageText(sea.age)}`
+        row.append(name, meta)
         row.addEventListener('click', () => {
           roomInput.value = sea.room
+          panel.classList.remove('open')
           roomInput.focus()
         })
-        seasEl.appendChild(row)
+        listEl.appendChild(row)
       }
-      seasEl.classList.toggle('has-seas', (seas ?? []).length > 0)
+      emptyEl.style.display = (seas ?? []).length ? 'none' : 'block'
     } catch { /* board down — menu works without it */ }
   }
-  setInterval(refresh, 20000)
-  setTimeout(refresh, 1500)
+
+  let refreshTimer = null
+  const setOpen = open => {
+    panel.classList.toggle('open', open)
+    clearInterval(refreshTimer)
+    if (open) {
+      refresh()
+      refreshTimer = setInterval(refresh, 15000)
+    }
+  }
+  btn.addEventListener('click', () => setOpen(!panel.classList.contains('open')))
+  closeBtn.addEventListener('click', () => setOpen(false))
+  document.addEventListener('keydown', e => {
+    if (e.code === 'Escape' && panel.classList.contains('open')) setOpen(false)
+  })
 }
 
 // ── Menu burn-up transition ───────────────────────────────────────────────────
