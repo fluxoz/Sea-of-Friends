@@ -23,6 +23,38 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+    /* ── Whimsical low-poly UI language ──────────────────────────
+       Chunky toy-like controls: navy "wood" buttons with gold ink
+       and a pressed-candy 3D drop; warm glowing cream plaques for
+       primary actions; cards with bevels instead of flat boxes. */
+    :root {
+      --ui-navy: #16283f;
+      --ui-navy-deep: #0e1c30;
+      --ui-navy-edge: #0a1422;
+      --ui-gold: #e6c98a;
+      --ui-gold-dim: rgba(200, 169, 110, 0.55);
+      --ui-cream: #f4e6c0;
+      --ui-cream-2: #e9d5a5;
+      --ui-ink: #3a2812;
+      --btn-drop: 0 3px 0 rgba(4, 8, 16, 0.55), 0 6px 12px rgba(0, 0, 0, 0.35);
+      --btn-drop-sm: 0 2px 0 rgba(4, 8, 16, 0.55), 0 4px 8px rgba(0, 0, 0, 0.3);
+      --btn-inset: inset 0 1px 0 rgba(255, 255, 255, 0.18), inset 0 -2px 0 rgba(0, 0, 0, 0.25);
+    }
+    .hud-chip, .hud-btn {
+      background: linear-gradient(180deg, #1d3352 0%, #142842 55%, #101f36 100%);
+      border: 1.5px solid rgba(200, 169, 110, 0.45);
+      color: var(--ui-gold);
+      border-radius: 10px;
+      box-shadow: var(--btn-drop-sm), var(--btn-inset);
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+    }
+    .hud-btn { transition: filter 0.12s, transform 0.08s, box-shadow 0.08s; }
+    .hud-btn:hover { filter: brightness(1.18); }
+    .hud-btn:active {
+      transform: translateY(2px);
+      box-shadow: 0 0 0 rgba(0,0,0,0.5), 0 2px 6px rgba(0, 0, 0, 0.3), var(--btn-inset);
+    }
+
     body {
       background: #0a1628;
       overflow: hidden;
@@ -142,44 +174,41 @@
     #join-btn {
       margin-top: 0.5rem;
       align-self: center;
-      padding: 0.6rem 2.4rem;
-      background: radial-gradient(ellipse at 35% 30%, #b8483a 0%, #8a2f22 55%, #641f16 100%);
-      color: #f5dfa5;
-      border: 2px solid #571a12; border-radius: 10px;
-      font-size: 1.35rem;
+      padding: 0.55rem 2.6rem;
+      background: linear-gradient(180deg, #fdf3d5 0%, #f2e0b2 55%, #e3ca92 100%);
+      color: #4a2f14;
+      border: 2px solid #b28d55;
+      border-radius: 12px;
+      clip-path: polygon(10px 0, calc(100% - 10px) 0, 100% 38%, 100% 62%, calc(100% - 10px) 100%, 10px 100%, 0 62%, 0 38%);
+      font-size: 1.45rem;
       font-family: 'Pirata One', Georgia, serif;
       letter-spacing: 0.08em;
-      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
-      box-shadow: 0 5px 14px rgba(0, 0, 0, 0.45), inset 0 2px 6px rgba(255, 200, 160, 0.35);
-      transition: transform 0.15s, box-shadow 0.15s, filter 0.15s;
+      text-shadow: 0 1px 0 rgba(255, 255, 255, 0.55);
+      box-shadow: 0 0 18px rgba(255, 220, 140, 0.55), 0 4px 10px rgba(60, 35, 10, 0.35),
+        inset 0 1px 0 rgba(255, 255, 255, 0.8), inset 0 -3px 0 rgba(160, 120, 60, 0.35);
+      transition: transform 0.12s, box-shadow 0.15s, filter 0.15s;
     }
     #join-btn:hover {
-      filter: brightness(1.15);
+      filter: brightness(1.06);
       transform: translateY(-2px);
-      box-shadow: 0 9px 20px rgba(0, 0, 0, 0.5), inset 0 2px 6px rgba(255, 200, 160, 0.35);
+      box-shadow: 0 0 26px rgba(255, 224, 150, 0.85), 0 7px 14px rgba(60, 35, 10, 0.4),
+        inset 0 1px 0 rgba(255, 255, 255, 0.8), inset 0 -3px 0 rgba(160, 120, 60, 0.35);
     }
-    #join-btn:active { transform: translateY(0); }
+    #join-btn:active { transform: translateY(1px); }
     #join-btn:disabled { opacity: 0.5; transform: none; filter: none; }
 
     /* Public seas: its own menu, off the scroll */
     #public-seas-btn {
-      background: rgba(10, 16, 28, 0.6);
-      border: 1px solid rgba(200, 169, 110, 0.35);
-      color: #d9c491; border-radius: 999px;
-      padding: 0.35rem 1.1rem; font-size: 0.82rem;
+      background: linear-gradient(180deg, #1d3352, #12233c);
+      border: 1.5px solid rgba(200, 169, 110, 0.45);
+      color: #e8d5a8; border-radius: 999px;
+      padding: 0.4rem 1.25rem; font-size: 0.85rem;
       font-family: 'IM Fell English', Georgia, serif; font-style: italic;
-      transition: background 0.15s, border-color 0.15s;
+      box-shadow: 0 3px 0 rgba(4, 8, 16, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+      transition: filter 0.12s, transform 0.08s, box-shadow 0.08s;
     }
-    #public-seas-btn:hover { background: rgba(10, 16, 28, 0.85); border-color: rgba(200,169,110,0.6); }
-    #replay-btn {
-      background: rgba(10, 16, 28, 0.6);
-      border: 1px solid rgba(200, 169, 110, 0.35);
-      color: #d9c491; border-radius: 999px;
-      padding: 0.35rem 1.1rem; font-size: 0.82rem;
-      font-family: 'IM Fell English', Georgia, serif; font-style: italic;
-      transition: background 0.15s, border-color 0.15s;
-    }
-    #replay-btn:hover { background: rgba(10, 16, 28, 0.85); border-color: rgba(200,169,110,0.6); }
+    #public-seas-btn:hover { filter: brightness(1.2); }
+    #public-seas-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(4,8,16,0.5), inset 0 1px 0 rgba(255,255,255,0.15); }
     #public-seas-panel {
       position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
       width: min(360px, 92vw); max-height: 70vh;
@@ -228,18 +257,20 @@
     }
     .ship-card {
       flex: 1;
-      padding: 0.5rem 0.4rem;
-      background: rgba(255, 250, 235, 0.25);
-      border: 1px solid rgba(90, 64, 32, 0.45);
-      border-radius: 4px;
-      transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+      padding: 0.55rem 0.4rem 0.5rem;
+      background: linear-gradient(180deg, rgba(255, 250, 235, 0.55), rgba(240, 222, 180, 0.4));
+      border: 1.5px solid rgba(122, 90, 52, 0.55);
+      border-radius: 9px;
+      box-shadow: 0 2px 0 rgba(90, 60, 25, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+      transition: border-color 0.15s, background 0.15s, box-shadow 0.15s, transform 0.1s;
       text-align: center;
     }
-    .ship-card:hover { border-color: rgba(90, 64, 32, 0.85); }
+    .ship-card:hover { border-color: rgba(122, 90, 52, 0.95); transform: translateY(-1px); }
     .ship-card.selected {
-      border-color: #8a2f22;
-      background: rgba(184, 72, 58, 0.12);
-      box-shadow: inset 0 0 0 1px #8a2f22, 0 2px 8px rgba(90, 30, 20, 0.25);
+      border-color: #d8a94e;
+      background: linear-gradient(180deg, #fdf3d5, #f0dcae);
+      box-shadow: 0 0 0 1.5px #d8a94e, 0 0 14px rgba(255, 210, 120, 0.75),
+        0 2px 0 rgba(90, 60, 25, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.7);
     }
     .ship-card .ship-name {
       font-family: 'Pirata One', Georgia, serif;
@@ -258,14 +289,15 @@
     }
     .feature-chip {
       font-size: 0.74rem;
-      padding: 0.28rem 0.8rem;
-      color: #d9c491;
-      background: rgba(10, 16, 28, 0.6);
-      border: 1px solid rgba(200,169,110,0.3);
+      padding: 0.3rem 0.9rem;
+      color: #e8d5a8;
+      background: linear-gradient(180deg, #1c3050, #12233c);
+      border: 1.5px solid rgba(200, 169, 110, 0.4);
       border-radius: 999px;
-      text-shadow: 0 1px 4px rgba(0,0,0,0.8);
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
       letter-spacing: 0.04em;
       white-space: nowrap;
+      box-shadow: 0 2px 0 rgba(4, 8, 16, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.14);
     }
     #join-hint {
       font-size: 0.78rem; opacity: 0.6;
@@ -898,6 +930,81 @@
       white-space: nowrap;
     }
     #ptt-indicator.active { display: block; }
+
+    /* ── Whimsical overrides: chunky toy-like HUD (see UI language above) ── */
+    #voice-btn, #invite-btn, #settings-btn, #quit-btn {
+      background: linear-gradient(180deg, #1d3352 0%, #142842 55%, #101f36 100%);
+      border: 1.5px solid rgba(200, 169, 110, 0.45);
+      color: var(--ui-gold);
+      border-radius: 10px;
+      box-shadow: var(--btn-drop-sm), var(--btn-inset);
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+      transition: filter 0.12s, transform 0.08s, box-shadow 0.08s;
+    }
+    #voice-btn:hover, #invite-btn:hover, #settings-btn:hover, #quit-btn:hover {
+      filter: brightness(1.2); background: linear-gradient(180deg, #1d3352 0%, #142842 55%, #101f36 100%);
+    }
+    #voice-btn:active, #invite-btn:active, #settings-btn:active, #quit-btn:active {
+      transform: translateY(2px);
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35), var(--btn-inset);
+    }
+    #quit-btn:hover { color: #ff8a76; }
+    #quit-btn.armed {
+      background: linear-gradient(180deg, #7e352a, #5c2118);
+      border-color: #c4352a; color: #ffd9c9;
+    }
+
+    #gold-count, #peer-count, #compass, #wind-indicator {
+      background: linear-gradient(180deg, #1b3050, #12233c);
+      border: 1.5px solid rgba(200, 169, 110, 0.4);
+      color: var(--ui-gold);
+      border-radius: 10px;
+      box-shadow: 0 2px 0 rgba(4, 8, 16, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+    }
+
+    #settings-panel, #voice-panel, #public-seas-panel, #invite-panel,
+    #latency-list, #chat-box, #mobile-card, #sunk-overlay > div {
+      background: linear-gradient(180deg, rgba(24, 42, 66, 0.96), rgba(13, 26, 44, 0.96));
+      border: 2px solid rgba(200, 169, 110, 0.45);
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.09);
+    }
+    #settings-panel .settings-title, #latency-list-title {
+      font-family: 'Pirata One', Georgia, serif;
+      letter-spacing: 0.08em; font-size: 0.95rem; opacity: 0.95;
+      color: var(--ui-gold);
+    }
+    .latency-head { color: var(--ui-gold) !important; }
+
+    #chat-send, #voice-mute-btn, #invite-copy, #mobile-copy, #voice-channel-btn, #voice-ptt-btn {
+      background: linear-gradient(180deg, #1d3352, #12233c);
+      border: 1.5px solid rgba(200, 169, 110, 0.45);
+      color: var(--ui-gold);
+      border-radius: 9px;
+      box-shadow: 0 2px 0 rgba(4, 8, 16, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+      transition: filter 0.12s, transform 0.08s;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+    }
+    #chat-send:hover, #voice-mute-btn:hover, #invite-copy:hover, #mobile-copy:hover,
+    #voice-channel-btn:hover, #voice-ptt-btn:hover { filter: brightness(1.2); }
+    #chat-send:active, #voice-mute-btn:active, #invite-copy:active, #mobile-copy:active,
+    #voice-channel-btn:active, #voice-ptt-btn:active { transform: translateY(1px); }
+    #voice-mute-btn.muted {
+      background: linear-gradient(180deg, #7e352a, #5c2118);
+      border-color: rgba(244, 67, 54, 0.5); color: #ffd9c9;
+    }
+
+    #speed-fill, #rudder-bar, .reload-bar, #hull-bar {
+      border-radius: 7px;
+      border: 1px solid rgba(200, 169, 110, 0.3);
+      box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.55);
+      overflow: hidden;
+    }
+    #speed-fill-inner, .reload-fill, #hull-fill {
+      border-radius: 6px;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+    }
   </style>
 </head>
 <body>
@@ -950,7 +1057,6 @@
       <span class="feature-chip">🌐 Fully P2P — no servers</span>
     </div>
     <button id="public-seas-btn">🌐 Public seas — find a crew</button>
-    <button id="replay-btn">🎞 Watch a replay</button>
     <input type="file" id="replay-file" accept=".json,application/json" style="display:none" />
     <div id="join-hint">Same room code = same sea. The first captain in charts the world.</div>
     <div id="public-seas-panel">
@@ -978,7 +1084,7 @@
       <button id="quit-btn" title="Abandon ship — back to the menu">⏏</button>
     </div>
     <div id="settings-panel">
-      <div class="settings-title">⚙ Ship's Rigging</div>
+      <div class="settings-title">⚙ &nbsp;Ship's Rigging</div>
       <div class="settings-row">
         <label for="set-fps">Show FPS</label>
         <input type="checkbox" id="set-fps" />
