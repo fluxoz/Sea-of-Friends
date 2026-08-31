@@ -262,6 +262,9 @@ export class Sim {
       this.combat.spawnBroadside(balls, fort.id, 1, listener, 'bolt')
     })
 
+    // ── Ship-to-ship collisions & ramming ──────────────────────────────────
+    this._collideShips(listener)
+
     // ── Power-ups & treasure ───────────────────────────────────────────────
     const puEvents = this.powerups.simStep(FIXED_DT, playerViews, this.rng)
     for (const ev of puEvents) this._applyPickup(ev)
@@ -274,6 +277,123 @@ export class Sim {
     ]
     this.combat.simStep(FIXED_DT, simTime, targets, this.world.getIslands(),
       (target, ball, point) => this._onBallHit(target, ball, point, listener), listener)
+  }
+
+  /**
+   * Deterministic ship-vs-ship collision: hulls are three circles along the
+   * keel; overlapping pairs are pushed apart mass-weighted, and a hard
+   * enough closing speed deals RAM damage — the aggressor (striking with
+   * the bow) takes a fraction, the receiver takes it full. Stateless by
+   * design: damage needs closing speed above a threshold, and the impact
+   * itself scrubs that speed away, which is the cooldown.
+   */
+  _collideShips(listener) {
+    const entries = []
+    for (const pid of this.sortedIds()) {
+      const p = this.players.get(pid)
+      if (p.ship.sinking || p.ship.hp <= 0) continue
+      entries.push({ id: pid, ship: p.ship, player: p, invuln: p.invulnT > 0 })
+    }
+    for (const u of this.aiFleet.units) {
+      if (u.ship.sinking || u.ship.hp <= 0) continue
+      entries.push({ id: u.id, ship: u.ship, ai: u, invuln: false })
+    }
+
+    for (let i = 0; i < entries.length; i++) {
+      for (let j = i + 1; j < entries.length; j++) {
+        const A = entries[i], B = entries[j]
+        const sa = A.ship, sb = B.ship
+        const cd = dhypot(sa.position.x - sb.position.x, sa.position.z - sb.position.z)
+        if (cd > sa.halfLength + sb.halfLength + 8) continue
+
+        // Deepest overlapping circle pair decides the contact
+        const ca = sa.collisionCircles()
+        const cb = sb.collisionCircles()
+        let best = null
+        for (const a of ca) {
+          for (const b of cb) {
+            const d = dhypot(a.x - b.x, a.z - b.z)
+            const overlap = a.r + b.r - d
+            if (overlap > 0 && (!best || overlap > best.overlap)) {
+              best = { overlap, d, a, b }
+            }
+          }
+        }
+        if (!best) continue
+
+        // Normal from B toward A (fallback to centre line when concentric)
+        let nx = best.a.x - best.b.x, nz = best.a.z - best.b.z
+        let nd = best.d
+        if (nd < 0.001) {
+          nx = sa.position.x - sb.position.x
+          nz = sa.position.z - sb.position.z
+          nd = dhypot(nx, nz) || 1
+        }
+        nx /= nd; nz /= nd
+
+        // Mass-weighted separation (the heavier hull budges less)
+        const ma = sa.mass, mb = sb.mass
+        const push = best.overlap
+        sa.position.x += nx * push * (mb / (ma + mb))
+        sa.position.z += nz * push * (mb / (ma + mb))
+        sb.position.x -= nx * push * (ma / (ma + mb))
+        sb.position.z -= nz * push * (ma / (ma + mb))
+
+        // Closing speed along the normal
+        const vax = dsin(sa.rotationY) * sa.speed, vaz = dcos(sa.rotationY) * sa.speed
+        const vbx = dsin(sb.rotationY) * sb.speed, vbz = dcos(sb.rotationY) * sb.speed
+        const closing = (vbx - vax) * nx + (vbz - vaz) * nz
+        if (closing <= 6 || A.invuln || B.invuln) continue
+
+        // Who rammed whom: the ship whose BOW circle made the contact
+        const bowA = best.a.bow, bowB = best.b.bow
+        let fA, fB, scrubA, scrubB
+        if (bowA && !bowB)      { fA = 0.15; fB = 1.0;  scrubA = 0.72; scrubB = 0.5 }
+        else if (bowB && !bowA) { fA = 1.0;  fB = 0.15; scrubA = 0.5;  scrubB = 0.72 }
+        else if (bowA && bowB)  { fA = 0.5;  fB = 0.5;  scrubA = 0.6;  scrubB = 0.6 }
+        else                    { fA = 0.3;  fB = 0.3;  scrubA = 0.8;  scrubB = 0.8 }
+
+        const base = Math.min(18, (closing - 6) * 1.1)
+        const dmgA = Math.round(base * fA * Math.sqrt(mb / ma))
+        const dmgB = Math.round(base * fB * Math.sqrt(ma / mb))
+        sa.speed *= scrubA
+        sb.speed *= scrubB
+
+        this._applyRamDamage(A, B.id, dmgA)
+        this._applyRamDamage(B, A.id, dmgB)
+
+        const dist = listener
+          ? dhypot(sa.position.x - listener.x, sa.position.z - listener.z) : 0
+        this.sfx.woodHit(dist)
+        this.sfx.thud(dist)
+        if (Math.max(dmgA, dmgB) >= 8) {
+          const rammer = bowA && !bowB ? A : bowB && !bowA ? B : null
+          if (rammer) {
+            const rammed = rammer === A ? B : A
+            this.hooks.feed(`💥 ${this.hooks.resolveName(rammer.id)} rammed ${this.hooks.resolveName(rammed.id)}!`)
+          } else {
+            this.hooks.feed(`💥 ${this.hooks.resolveName(A.id)} and ${this.hooks.resolveName(B.id)} collided!`)
+          }
+        }
+      }
+    }
+  }
+
+  _applyRamDamage(entry, attackerId, dmg) {
+    if (dmg <= 0) return
+    if (entry.player) {
+      const p = entry.player
+      p.lastAttacker = attackerId
+      p.ship.damage(dmg)
+      if (dmg >= 9) p.ship.addLeak()   // a proper ram holes the waterline
+      if (p.id === this.hooks.selfId) {
+        this.hooks.onLocal({ type: 'hit', zone: 'hull', bolt: false })
+      }
+      if (p.ship.hp <= 0) this._sinkPlayer(p, attackerId)
+    } else if (entry.ai) {
+      const r = this.aiFleet.applyBallHit(entry.id, attackerId, dmg, dmg >= 9 ? 'waterline' : 'hull')
+      if (r.sunk) this._onAiSunk(r.unit, attackerId, this._listenerPos())
+    }
   }
 
   _listenerPos() {

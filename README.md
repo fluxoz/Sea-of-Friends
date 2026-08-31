@@ -158,6 +158,14 @@ so every peer simulates the same ship:
   while. Hard rudder bleeds speed. Plan your broadside passes. The camera's
   field of view widens and the bow wave grows as the ship gathers way.
 - Ships **heel** under crosswind pressure and lean into turns.
+- **Ramming is a weapon.** Hulls collide for real (three-circle keels,
+  mass-weighted push-apart): strike with your BOW and the victim takes the
+  full impact — scaling with closing speed and the rammer's heft, holing
+  the waterline on a solid hit — while the aggressor shrugs off a fraction.
+  Bow-to-bow splits the pain; a side-swipe scrapes both. Ram kills credit
+  the rammer, purse and all.
+- Stopped ships can **pivot in place** — the crew hauls the bow around far
+  faster than the rudder alone once way is lost.
 
 ### 🗺 Procedural seas
 
