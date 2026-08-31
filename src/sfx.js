@@ -48,7 +48,7 @@ export class SFX {
    *  the synthesised voice covers the gap and any load failure. */
   async _loadCannonSamples() {
     this._cannonBufs = []
-    for (let i = 1; i <= 6; i++) {
+    for (let i = 1; i <= 5; i++) {
       try {
         const r = await fetch(`/assets/sounds/cannon_${i}.ogg`)
         if (!r.ok) continue
