@@ -4,6 +4,19 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Sea of Friends</title>
+  <meta name="description" content="Ship battles with yer crew — broadsides, ghost ships & buried treasure. Fully peer-to-peer in the browser: no servers, no accounts, just a room code." />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Sea of Friends" />
+  <meta property="og:description" content="Ship battles with yer crew — broadsides, ghost ships & buried treasure. Fully P2P in the browser: no servers, just a room code." />
+  <meta property="og:url" content="https://sea-of-friends.com/" />
+  <meta property="og:image" content="https://sea-of-friends.com/social-card.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Sea of Friends" />
+  <meta name="twitter:description" content="Broadsides, ghost ships & buried treasure — no servers, just yer crew." />
+  <meta name="twitter:image" content="https://sea-of-friends.com/social-card.png" />
+  <meta name="theme-color" content="#0a1628" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Pirata+One&family=IM+Fell+English:ital@0;1&display=swap" rel="stylesheet" />
@@ -89,8 +102,10 @@
       position: relative;
       display: flex; flex-direction: column; gap: 0.7rem;
       width: min(480px, 94vw);
-      padding: 3.4rem 3.9rem 3.8rem;
+      aspect-ratio: 284 / 342;
+      padding: 92px 64px 88px;
       align-items: center;
+      justify-content: center;
       margin: 0.4rem 0;
       color: #4a3018;
       background: url('/assets/extra/scroll.svg');
@@ -244,6 +259,49 @@
       font-family: 'IM Fell English', Georgia, serif; font-style: italic;
       text-shadow: 0 1px 4px rgba(0,0,0,0.9);
     }
+
+    /* ── Mobile landing ──────────────────────────────────────── */
+    #mobile-landing {
+      position: fixed; inset: 0; z-index: 900;
+      display: none; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 1rem; padding: 1.4rem; text-align: center;
+      background: radial-gradient(ellipse at 50% 42%,
+        rgba(6, 14, 26, 0.15) 0%, rgba(4, 10, 20, 0.6) 78%, rgba(2, 6, 14, 0.85) 100%);
+    }
+    body.is-mobile #mobile-landing { display: flex; }
+    body.is-mobile #name-screen { display: none !important; }
+    #mobile-title {
+      font-family: 'Pirata One', Georgia, serif;
+      font-size: clamp(3rem, 14vw, 4.5rem); line-height: 1;
+      background: linear-gradient(180deg, #f7e3ac 0%, #e2bb6c 45%, #96742f 100%);
+      -webkit-background-clip: text; background-clip: text;
+      -webkit-text-fill-color: transparent;
+      filter: drop-shadow(0 4px 14px rgba(0,0,0,0.85));
+    }
+    #mobile-tag {
+      font-family: 'IM Fell English', Georgia, serif; font-style: italic;
+      color: #e6d3a3; font-size: 0.95rem;
+      text-shadow: 0 2px 8px rgba(0,0,0,0.9);
+    }
+    #mobile-card {
+      background: rgba(10, 22, 40, 0.88);
+      border: 1px solid rgba(200, 169, 110, 0.4);
+      border-radius: 10px; padding: 1.3rem 1.4rem;
+      color: #d9c491; max-width: 330px;
+      display: flex; flex-direction: column; gap: 0.9rem;
+      font-size: 0.95rem; line-height: 1.5;
+      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
+    }
+    #mobile-card strong { color: #f0dfae; }
+    #mobile-room-line { color: #f0dfae; font-style: italic; display: none; }
+    #mobile-copy {
+      padding: 0.55rem 1.2rem; border-radius: 6px;
+      border: 1px solid rgba(200,169,110,0.45);
+      background: rgba(200,169,110,0.14); color: #e6d3a3;
+      font-size: 0.9rem; font-family: inherit;
+    }
+    #mobile-copy:active { background: rgba(200,169,110,0.3); }
 
     /* ── HUD ─────────────────────────────────────────────────── */
     #hud { position: fixed; inset: 0; pointer-events: none; z-index: 100; }
@@ -683,6 +741,40 @@
     }
 
     /* ── Settings ─────────────────────────────────────────────── */
+    #invite-btn {
+      background: rgba(0,0,0,0.55); border: 1px solid rgba(200,169,110,0.25);
+      color: #c8a96e; padding: 0.4rem 0.75rem; border-radius: 5px;
+      font-size: 1rem; cursor: pointer; pointer-events: all;
+      transition: background 0.2s; user-select: none; font-family: inherit;
+    }
+    #invite-btn:hover { background: rgba(0,0,0,0.75); }
+    #invite-panel {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      background: rgba(10, 22, 40, 0.96);
+      border: 1px solid rgba(200, 169, 110, 0.4);
+      border-radius: 8px; padding: 1.2rem 1.4rem 1.1rem;
+      color: #c8a96e; z-index: 300; pointer-events: all;
+      display: none; flex-direction: column; align-items: center; gap: 0.7rem;
+      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.6);
+    }
+    #invite-panel.open { display: flex; }
+    #invite-panel h3 {
+      font-family: 'Pirata One', Georgia, serif; font-weight: 400;
+      font-size: 1.3rem; letter-spacing: 0.05em;
+    }
+    #invite-qr { border-radius: 6px; }
+    #invite-link {
+      font-size: 0.78rem; color: #e0d4b0; background: rgba(255,255,255,0.07);
+      padding: 0.35rem 0.7rem; border-radius: 4px; user-select: all;
+      max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    #invite-copy {
+      padding: 0.35rem 1.2rem; border-radius: 4px; border: 1px solid rgba(200,169,110,0.4);
+      background: rgba(200,169,110,0.12); color: #c8a96e;
+      font-size: 0.82rem; font-family: inherit;
+    }
+    #invite-copy:hover { background: rgba(200,169,110,0.25); }
+    #invite-hint { font-size: 0.7rem; opacity: 0.55; font-style: italic; }
     #settings-btn {
       background: rgba(0,0,0,0.55); border: 1px solid rgba(200,169,110,0.25);
       color: #c8a96e; padding: 0.4rem 0.75rem; border-radius: 5px;
@@ -801,6 +893,16 @@
     <p>Hoisting the colours… connecting to the DHT</p>
   </div>
 
+  <div id="mobile-landing">
+    <div id="mobile-title">Sea of Friends</div>
+    <div id="mobile-tag">☠ Broadsides, ghost ships &amp; buried treasure ☠</div>
+    <div id="mobile-card">
+      <p>This sea is sailed with a <strong>keyboard and a big horizon</strong> —
+      it's a desktop game, and yer phone shall be spared the press-ganging.</p>
+      <p id="mobile-room-line"></p>
+      <button id="mobile-copy">Copy the link for later</button>
+    </div>
+  </div>
   <div id="name-screen">
     <div id="title">Sea of Friends</div>
     <div id="tagline"><span class="skull">☠</span> Broadsides, ghost ships &amp; buried treasure — no servers, just yer crew <span class="skull">☠</span></div>
@@ -856,6 +958,7 @@
       <button id="voice-btn" title="Voice chat">🎤</button>
       <div id="gold-count">🪙 0</div>
       <div id="peer-count">⚓ 1 sailor</div>
+      <button id="invite-btn" title="Invite yer crew — link & QR">🔗</button>
       <button id="settings-btn" title="Settings">⚙</button>
       <button id="quit-btn" title="Abandon ship — back to the menu">⏏</button>
     </div>
@@ -879,6 +982,13 @@
       </div>
     </div>
     <div id="fps-counter">60 fps</div>
+    <div id="invite-panel">
+      <h3>⚓ Summon Yer Crew</h3>
+      <canvas id="invite-qr" width="220" height="220"></canvas>
+      <div id="invite-link"></div>
+      <button id="invite-copy">Copy link</button>
+      <div id="invite-hint">Same link, same sea — scan or send it</div>
+    </div>
     <div id="latency-list">
       <div class="latency-row latency-head">
         <span class="latency-row-name">⚓ Crew</span>

@@ -842,25 +842,32 @@ export class Game {
   // ──────────────────────────────────────────────────────────────────────────
 
   _ensureAimObjects() {
-    if (this._aimDots) return
-    const aimGeo = new THREE.BufferGeometry()
-    aimGeo.setAttribute('position',
-      new THREE.BufferAttribute(new Float32Array(AIM_DOTS * 3), 3))
-    this._aimDots = new THREE.Points(aimGeo, new THREE.PointsMaterial({
-      color: 0xffd98a, size: 1.0, map: getSoftTexture(),
-      transparent: true, opacity: 0.9, depthWrite: false, sizeAttenuation: true,
-    }))
-    this._aimDots.frustumCulled = false
-    this._aimDots.visible = false
-    this._scene.add(this._aimDots)
+    if (this._aimArc) return
+    // A solid tube arc, not dots: dots vanish at far zoom, and WebGL can't
+    // draw thick lines. The tube's radius scales with camera distance so
+    // the arc reads at any zoom.
+    this._aimArc = new THREE.Mesh(
+      new THREE.BufferGeometry(),
+      new THREE.MeshBasicMaterial({
+        color: 0xff5a3c, transparent: true, opacity: 0.95,
+        depthWrite: false, depthTest: false, fog: false,
+      }),
+    )
+    this._aimArc.renderOrder = 5
+    this._aimArc.frustumCulled = false
+    this._aimArc.visible = false
+    this._scene.add(this._aimArc)
+    this._aimPts = Array.from({ length: AIM_DOTS }, () => new THREE.Vector3())
 
     this._aimRing = new THREE.Mesh(
       new THREE.RingGeometry(1.5, 2.2, 24),
       new THREE.MeshBasicMaterial({
-        color: 0xffd98a, transparent: true, opacity: 0.75,
+        color: 0xff5a3c, transparent: true, opacity: 0.85,
+        depthWrite: false, depthTest: false, fog: false,
         side: THREE.DoubleSide, depthWrite: false,
       }),
     )
+    this._aimRing.renderOrder = 5
     this._aimRing.rotation.x = -Math.PI / 2
     this._aimRing.visible = false
     this._scene.add(this._aimRing)
@@ -870,7 +877,7 @@ export class Game {
     this._ensureAimObjects()
     const me = this.localShip
     if (!me || !this._aimActive || me.sinking) {
-      this._aimDots.visible = false
+      this._aimArc.visible = false
       this._aimRing.visible = false
       if (me) {
         for (const b of [1, -1, 'bow']) {
@@ -935,7 +942,6 @@ export class Game {
     let vz = Math.cos(yaw) * v * cosE + fwd.z * me.speed
     let vy = Math.sin(this._aimElev) * v
 
-    const attr = this._aimDots.geometry.attributes.position
     const time = this.world.getTime()
     const STEP = 0.055
     let count  = 0
@@ -943,13 +949,20 @@ export class Game {
       vy -= BALL_GRAVITY * STEP
       x += vx * STEP; y += vy * STEP; z += vz * STEP
       const w = waveHeight(x, z, time)
-      attr.setXYZ(i, x, Math.max(y, w + 0.15), z)
+      this._aimPts[i].set(x, Math.max(y, w + 0.15), z)
       count++
       if (y <= w) break
     }
-    attr.needsUpdate = true
-    this._aimDots.geometry.setDrawRange(0, count)
-    this._aimDots.visible = true
+    if (count >= 2) {
+      const curve = new THREE.CatmullRomCurve3(this._aimPts.slice(0, count))
+      const radius = 0.3 + this._camDist * 0.02
+      const tube = new THREE.TubeGeometry(curve, Math.max(8, count * 2), radius, 6, false)
+      this._aimArc.geometry.dispose()
+      this._aimArc.geometry = tube
+      this._aimArc.visible = true
+    } else {
+      this._aimArc.visible = false
+    }
     this._aimRing.position.set(x, waveHeight(x, z, time) + 0.3, z)
     this._aimRing.visible = true
   }

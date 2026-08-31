@@ -195,9 +195,20 @@ export async function preloadAssets(onProgress) {
  */
 export function cloneAsset(name) {
   const root = _cache.get(name)
-  if (!root) throw new Error(`Asset not loaded: "${name}"`)
+  if (!root) {
+    // The mobile landing renders the world WITHOUT the preload (10+ MB of
+    // props nobody can play with on a phone) — missing assets become empty
+    // stand-ins. Desktop always preloads all-or-nothing, so a miss there
+    // is a programming error worth a loud console line, not a crash.
+    if (!_warned.has(name)) {
+      _warned.add(name)
+      console.warn(`[assets] "${name}" not loaded — using an empty stand-in`)
+    }
+    return new THREE.Group()
+  }
   return root.clone(true)
 }
+const _warned = new Set()
 
 /** Returns true if the named asset is available in the cache. */
 export function hasAsset(name) {

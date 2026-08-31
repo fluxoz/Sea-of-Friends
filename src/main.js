@@ -5,6 +5,7 @@ import { Game }           from './game.js'
 import { NetworkManager, APP_VERSION, fetchTurnServers } from './network.js'
 import { ProximityAudio } from './audio.js'
 import { preloadAssets }  from './assets.js'
+import QRCode            from 'qrcode'
 
 const DEFAULT_ROOM_CODE = 'world-1'
 
@@ -105,6 +106,57 @@ const COMMANDS = [
   { cmd: '/desync', args: '',         desc: 'Download the desync evidence bundle' },
 ]
 
+// ── Room links: ?room=X prefills the code (and names the sea on mobile) ──────
+const ROOM_PARAM = new URLSearchParams(location.search).get('room')
+
+/** Phones get a landing page, not a press-ganging — the game needs a keyboard. */
+const IS_MOBILE = matchMedia('(pointer: coarse)').matches
+  && Math.min(screen.width, screen.height) < 820
+
+// ── Invite panel: link + QR (anchor amidships) for the current sea ────────────
+function openInvitePanel() {
+  const panel = document.getElementById('invite-panel')
+  if (panel.classList.contains('open')) { panel.classList.remove('open'); return }
+  const url = `https://sea-of-friends.com/?room=${encodeURIComponent(network?.roomId ?? 'world-1')}`
+  document.getElementById('invite-link').textContent = url
+  const canvas = document.getElementById('invite-qr')
+  QRCode.toCanvas(canvas, url, {
+    errorCorrectionLevel: 'H',   // survives the anchor stamped amidships
+    width: 220, margin: 2,
+    color: { dark: '#12233d', light: '#f0e2bc' },
+  }, () => {
+    const ctx = canvas.getContext('2d')
+    const c = canvas.width / 2
+    ctx.fillStyle = '#f0e2bc'
+    ctx.beginPath()
+    ctx.arc(c, c, 26, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.strokeStyle = '#12233d'
+    ctx.lineWidth = 2
+    ctx.stroke()
+    ctx.font = '32px serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillStyle = '#12233d'
+    ctx.fillText('⚓', c, c + 2)
+  })
+  panel.classList.add('open')
+}
+
+// One-time invite wiring (never inside startGame — rejoin would stack it)
+document.getElementById('invite-btn').addEventListener('click', openInvitePanel)
+document.getElementById('invite-copy').addEventListener('click', async e => {
+  const url = document.getElementById('invite-link').textContent
+  try {
+    await navigator.clipboard.writeText(url)
+    e.target.textContent = 'Copied!'
+    setTimeout(() => { e.target.textContent = 'Copy link' }, 1600)
+  } catch { /* the link text is selectable as fallback */ }
+})
+document.addEventListener('keydown', e => {
+  if (e.code === 'Escape') document.getElementById('invite-panel').classList.remove('open')
+})
+
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 async function init() {
   // Show asset-loading progress in the loading screen
@@ -119,6 +171,27 @@ async function init() {
   progressBar.appendChild(progressFill)
   loadingEl.appendChild(progressBar)
 
+  if (IS_MOBILE) {
+    // Landing page only: the living ocean as backdrop, none of the 10 MB of
+    // props (cloneAsset degrades to empty stand-ins without the preload)
+    game = new Game(document.getElementById('canvas'))
+    game.init()
+    loadingEl.style.display = 'none'
+    document.body.classList.add('is-mobile')
+    const roomLine = document.getElementById('mobile-room-line')
+    if (ROOM_PARAM) {
+      roomLine.textContent = `Yer crew sails the sea "${ROOM_PARAM}" — board from a computer.`
+      roomLine.style.display = 'block'
+    }
+    document.getElementById('mobile-copy').addEventListener('click', async e => {
+      try {
+        await navigator.clipboard.writeText(location.href)
+        e.target.textContent = 'Copied — see you at the helm'
+      } catch { e.target.textContent = location.href }
+    })
+    return
+  }
+
   await preloadAssets(p => {
     progressFill.style.width = `${Math.round(p * 100)}%`
     if (loadingText) loadingText.textContent = `Loading assets… ${Math.round(p * 100)}%`
@@ -130,6 +203,10 @@ async function init() {
 
   loadingEl.style.display  = 'none'
   nameScreen.style.display = 'flex'
+  if (ROOM_PARAM) {
+    roomInput.value = ROOM_PARAM.slice(0, 32)
+    addSystemMessage(`⚓ Invited to sea "${roomInput.value}" — name yerself and set sail`)
+  }
   nameInput.focus()
   watchForNewVersion()
   // Warm the TURN credentials while the captain reads the menu, so joining

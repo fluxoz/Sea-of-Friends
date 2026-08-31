@@ -20,6 +20,7 @@
   },
   "homepage": "https://github.com/fluxoz/Sea-of-Friends#readme",
   "dependencies": {
+    "qrcode": "^1.5.4",
     "three": "^0.183.2",
     "trystero": "^0.22.0"
   },
