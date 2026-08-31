@@ -88,8 +88,8 @@
     #join-panel {
       position: relative;
       display: flex; flex-direction: column; gap: 0.7rem;
-      width: min(460px, 94vw);
-      padding: 3.4rem 4rem 3.8rem;
+      width: min(480px, 94vw);
+      padding: 3.4rem 13% 3.8rem;
       margin: 0.4rem 0;
       color: #4a3018;
       background: url('/assets/extra/scroll.svg');
@@ -141,37 +141,57 @@
     #join-btn:active { transform: translateY(0); }
     #join-btn:disabled { opacity: 0.5; transform: none; filter: none; }
 
-    /* Public listing + board */
-    #list-public-row {
-      display: flex; align-items: center; gap: 0.45rem;
-      font-size: 0.72rem; color: #6e532e;
-      font-family: 'IM Fell English', Georgia, serif;
-      align-self: center;
-      max-width: 290px; text-align: left; line-height: 1.35;
+    /* Public seas: its own menu, off the scroll */
+    #public-seas-btn {
+      background: rgba(10, 16, 28, 0.6);
+      border: 1px solid rgba(200, 169, 110, 0.35);
+      color: #d9c491; border-radius: 999px;
+      padding: 0.35rem 1.1rem; font-size: 0.82rem;
+      font-family: 'IM Fell English', Georgia, serif; font-style: italic;
+      transition: background 0.15s, border-color 0.15s;
     }
-    #list-public-row label { cursor: inherit; }
-    #list-public-row input { accent-color: #8a2f22; width: 0.9rem; height: 0.9rem; }
-    #public-seas {
-      max-height: 92px; overflow-y: auto;
-      border-top: 1px solid rgba(90, 64, 32, 0.35);
-      padding-top: 0.35rem;
-      display: none;
+    #public-seas-btn:hover { background: rgba(10, 16, 28, 0.85); border-color: rgba(200,169,110,0.6); }
+    #public-seas-panel {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      width: min(360px, 92vw); max-height: 70vh;
+      background: rgba(10, 22, 40, 0.96);
+      border: 1px solid rgba(200, 169, 110, 0.4);
+      border-radius: 8px; padding: 1.1rem 1.2rem 1rem;
+      color: #c8a96e; z-index: 950;
+      display: none; flex-direction: column; gap: 0.6rem;
+      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.6);
     }
-    #public-seas.has-seas { display: block; }
-    #public-seas .sea-row {
+    #public-seas-panel.open { display: flex; }
+    #public-seas-panel h3 {
+      font-family: 'Pirata One', Georgia, serif; font-weight: 400;
+      font-size: 1.3rem; letter-spacing: 0.05em; text-align: center;
+    }
+    #public-seas-list { overflow-y: auto; display: flex; flex-direction: column; gap: 0.15rem; }
+    #public-seas-list .sea-row {
       display: flex; justify-content: space-between; gap: 0.8rem;
-      font-size: 0.78rem; color: #4a3018; padding: 0.14rem 0.3rem;
-      border-radius: 3px;
-      font-family: 'IM Fell English', Georgia, serif;
+      font-size: 0.85rem; color: #e0d4b0; padding: 0.35rem 0.5rem;
+      border-radius: 4px; border: 1px solid transparent;
     }
-    #public-seas .sea-row:hover { background: rgba(138, 47, 34, 0.14); }
-    #public-seas .sea-name { font-weight: bold; }
-    #public-seas .sea-meta { opacity: 0.75; white-space: nowrap; }
-    #public-seas-title {
-      font-size: 0.66rem; color: #6e532e; text-transform: uppercase;
-      letter-spacing: 0.14em; margin-bottom: 0.15rem;
-      font-family: 'IM Fell English', Georgia, serif;
+    #public-seas-list .sea-row:hover {
+      background: rgba(200, 169, 110, 0.12);
+      border-color: rgba(200, 169, 110, 0.3);
     }
+    #public-seas-list .sea-name { font-weight: bold; }
+    #public-seas-list .sea-meta { opacity: 0.65; white-space: nowrap; font-size: 0.78rem; }
+    #public-seas-empty { font-size: 0.82rem; opacity: 0.6; text-align: center; padding: 0.6rem 0; font-style: italic; }
+    #list-public-row {
+      display: flex; align-items: center; gap: 0.5rem;
+      font-size: 0.78rem; color: rgba(200, 169, 110, 0.85);
+      border-top: 1px solid rgba(200, 169, 110, 0.2);
+      padding-top: 0.7rem; line-height: 1.35;
+    }
+    #list-public-row input { accent-color: #c8a96e; width: 0.95rem; height: 0.95rem; flex-shrink: 0; }
+    #public-seas-close {
+      position: absolute; top: 0.45rem; right: 0.7rem;
+      background: none; border: none; color: rgba(200, 169, 110, 0.6);
+      font-size: 1.1rem; padding: 0.2rem;
+    }
+    #public-seas-close:hover { color: #c8a96e; }
 
     /* Ship class selector */
     #ship-select {
@@ -803,13 +823,6 @@
           <div class="ship-desc">Slow &amp; devastating<br>5+4 guns · 150 hull</div>
         </div>
       </div>
-      <div id="list-public-row">
-        <input type="checkbox" id="list-public" />
-        <label for="list-public" title="Your room appears on everyone's menu — anyone can join">List this sea publicly</label>
-      </div>
-      <div id="public-seas">
-        <div id="public-seas-title">⚓ Seas taking crew</div>
-      </div>
       <button id="join-btn">⚓ Set Sail</button>
     </div>
     <div id="features">
@@ -820,7 +833,18 @@
       <span class="feature-chip">🎤 Proximity voice</span>
       <span class="feature-chip">🌐 Fully P2P — no servers</span>
     </div>
+    <button id="public-seas-btn">🌐 Public seas — find a crew</button>
     <div id="join-hint">Same room code = same sea. The first captain in charts the world.</div>
+    <div id="public-seas-panel">
+      <button id="public-seas-close" title="Close">✕</button>
+      <h3>⚓ Seas Taking Crew</h3>
+      <div id="public-seas-list"></div>
+      <div id="public-seas-empty">No public seas right now — chart one and fly the flag below.</div>
+      <div id="list-public-row">
+        <input type="checkbox" id="list-public" />
+        <label for="list-public" title="Your room appears on everyone's menu — anyone can join">List my sea publicly when I set sail</label>
+      </div>
+    </div>
   </div>
 
   <canvas id="canvas"></canvas>
