@@ -1,0 +1,11 @@
+name = "sea-of-friends-signal"
+main = "src/index.js"
+compatibility_date = "2026-08-01"
+
+[[durable_objects.bindings]]
+name = "SWARM"
+class_name = "Swarm"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Swarm"]
