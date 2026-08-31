@@ -182,18 +182,57 @@ export class SFX {
       const t0 = this.ctx.currentTime + delay
       const src = this.ctx.createBufferSource()
       src.buffer = bufs[(Math.random() * bufs.length) | 0]
-      src.playbackRate.value = 0.9 + Math.random() * 0.22
+      src.playbackRate.value = 0.88 + Math.random() * 0.26
+
+      // Per-shot character: a randomised EQ tilt (some shots barky, some
+      // boomy), a wandering lowpass, a touch of stereo spread so a
+      // broadside walks across the field, and loudness that breathes
+      const tilt = this.ctx.createBiquadFilter()
+      tilt.type = 'peaking'
+      tilt.frequency.value = 250 + Math.random() * 1400
+      tilt.Q.value = 0.7
+      tilt.gain.value = -4 + Math.random() * 8
       const filter = this.ctx.createBiquadFilter()
       filter.type = 'lowpass'
-      filter.frequency.value = 500 + 11000 * near * near
+      filter.frequency.value = (500 + 11000 * near * near) * (0.8 + Math.random() * 0.45)
+      const pan = this.ctx.createStereoPanner
+        ? this.ctx.createStereoPanner() : null
+      if (pan) pan.pan.value = (Math.random() - 0.5) * 0.7 * near
       const gain = this.ctx.createGain()
-      gain.gain.value = Math.min(1, 1.1 * v)
-      src.connect(filter).connect(gain).connect(this._master)
+      gain.gain.value = Math.min(1, (0.9 + Math.random() * 0.3) * v)
+      let node = src
+      node = (node.connect(tilt), tilt)
+      node = (node.connect(filter), filter)
+      if (pan) node = (node.connect(pan), pan)
+      node.connect(gain).connect(this._master)
       src.start(t0)
-      // A touch of sub under the recording — the real tails carry the rest
+
+      // Occasional double-report: a second, quieter sample right behind the
+      // first — some guns just bark twice off the water
+      if (Math.random() < 0.18) {
+        const s2 = this.ctx.createBufferSource()
+        s2.buffer = bufs[(Math.random() * bufs.length) | 0]
+        s2.playbackRate.value = 0.95 + Math.random() * 0.2
+        const g2 = this.ctx.createGain()
+        g2.gain.value = gain.gain.value * 0.35
+        s2.connect(filter)
+        s2.start(t0 + 0.05 + Math.random() * 0.05)
+      }
+
+      // Close shots get a randomised single slap off the water
+      if (near > 0.6 && Math.random() < 0.5) {
+        const dl = this.ctx.createDelay(0.3)
+        dl.delayTime.value = 0.07 + Math.random() * 0.09
+        const dg = this.ctx.createGain()
+        dg.gain.value = 0.1 + Math.random() * 0.08
+        gain.connect(dl).connect(dg).connect(this._master)
+      }
+
+      // A touch of sub under the recording, breathing a little itself
       this._tone({
-        type: 'sine', freqStart: 55, freqEnd: 30,
-        dur: 0.3, gainPeak: 0.22 * v, attack: 0.004, delay,
+        type: 'sine', freqStart: 50 + Math.random() * 14, freqEnd: 28,
+        dur: 0.25 + Math.random() * 0.15, gainPeak: (0.16 + Math.random() * 0.12) * v,
+        attack: 0.004, delay,
       })
       return
     }
