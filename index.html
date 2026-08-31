@@ -167,6 +167,15 @@
       transition: background 0.15s, border-color 0.15s;
     }
     #public-seas-btn:hover { background: rgba(10, 16, 28, 0.85); border-color: rgba(200,169,110,0.6); }
+    #replay-btn {
+      background: rgba(10, 16, 28, 0.6);
+      border: 1px solid rgba(200, 169, 110, 0.35);
+      color: #d9c491; border-radius: 999px;
+      padding: 0.35rem 1.1rem; font-size: 0.82rem;
+      font-family: 'IM Fell English', Georgia, serif; font-style: italic;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    #replay-btn:hover { background: rgba(10, 16, 28, 0.85); border-color: rgba(200,169,110,0.6); }
     #public-seas-panel {
       position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
       width: min(360px, 92vw); max-height: 70vh;
@@ -937,6 +946,8 @@
       <span class="feature-chip">🌐 Fully P2P — no servers</span>
     </div>
     <button id="public-seas-btn">🌐 Public seas — find a crew</button>
+    <button id="replay-btn">🎞 Watch a replay</button>
+    <input type="file" id="replay-file" accept=".json,application/json" style="display:none" />
     <div id="join-hint">Same room code = same sea. The first captain in charts the world.</div>
     <div id="public-seas-panel">
       <button id="public-seas-close" title="Close">✕</button>

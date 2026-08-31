@@ -492,6 +492,93 @@ export class Game {
     }
   }
 
+  // ── Replay playback ────────────────────────────────────────────────────────
+  // A deterministic sim makes a snapshot + input stream a bit-perfect replay.
+  // No network, no lockstep: restore the snapshot, feed the recorded ticks.
+
+  startReplay(data) {
+    this._replayMode   = true
+    this._replayIdx    = 0
+    this._replaySpeed  = 1
+    this._replayPaused = false
+    this._replayFollow = 0
+    this._replayRecords = data.records ?? []
+
+    this.sim = new Sim(
+      {
+        scene: this._scene, world: this.world, combat: this._combat,
+        aiFleet: this.aiFleet, forts: this.forts, powerups: this.powerups,
+        sfx: this._sfx,
+      },
+      {
+        selfId: '·replay·',
+        feed: text => this.onSystemMessage?.(text),
+        resolveName: id => this._resolveName(id),
+        onLocal: () => {},
+      },
+    )
+    this._eventKeys = new Set()
+    this.sim.restore(data.snap)
+    this._sfx.init()
+
+    this._replayTimer = setInterval(() => {
+      if (this._replayPaused) return
+      for (let i = 0; i < this._replaySpeed; i++) this._replayStepOnce()
+    }, TICK_MS)
+
+    this._replayKeys = e => {
+      if (e.code === 'Escape') { location.reload(); return }
+      if (e.code === 'Space') { e.preventDefault(); this._replayPaused = !this._replayPaused }
+      if (e.code === 'KeyN') this._replayFollow++
+      if (/^Digit[1-4]$/.test(e.code)) this._replaySpeed = 2 ** (+e.code.slice(5) - 1)
+      this._updateReplayHud()
+    }
+    document.addEventListener('keydown', this._replayKeys)
+
+    const hud = document.createElement('div')
+    hud.id = 'replay-hud'
+    hud.style.cssText = 'position:fixed;top:1rem;left:50%;transform:translateX(-50%);z-index:400;'
+      + 'background:rgba(10,22,40,0.9);color:#c8a96e;border:1px solid rgba(200,169,110,0.4);'
+      + 'border-radius:6px;padding:0.45rem 1.1rem;font-size:0.85rem;pointer-events:none'
+    document.body.appendChild(hud)
+    this._updateReplayHud()
+  }
+
+  _replayStepOnce() {
+    const rec = this._replayRecords[this._replayIdx]
+    if (!rec) {
+      if (!this._replayPaused) {
+        this._replayPaused = true
+        this.onSystemMessage?.('🎞 Replay ended — Esc returns to the menu')
+        this._updateReplayHud()
+      }
+      return
+    }
+    this._replayIdx++
+    const [t, inputRows, cmds = []] = rec
+    this._sfx.beginTick(t)
+    try {
+      this.sim.step(t, new Map(inputRows),
+        cmds.map(c => c.j ? { j: c.j, c: c.c } : c.p ? { p: c.p } : { d: c.d }))
+    } finally {
+      this._sfx.endTick()
+    }
+  }
+
+  _replayShip() {
+    const players = [...(this.sim?.players.values() ?? [])]
+    if (!players.length) return null
+    return players[this._replayFollow % players.length].ship
+  }
+
+  _updateReplayHud() {
+    const el = document.getElementById('replay-hud')
+    if (!el) return
+    const done = this._replayIdx >= this._replayRecords.length
+    el.textContent = `🎞 REPLAY ${done ? '· ended' : this._replayPaused ? '· ⏸' : `· ${this._replaySpeed}×`}`
+      + '   Space pause · N next ship · 1-4 speed · Esc exit'
+  }
+
   // ── Sea persistence ────────────────────────────────────────────────────────
 
   _seaKey() { return 'sof-sea:' + (this.network?.roomId ?? 'world-1') }
@@ -689,13 +776,15 @@ export class Game {
       this._updateWakes(waveTime)
     }
 
-    const me = this.localShip
-    if (this._playing && me) {
-      this._updateAimVisuals()
+    const me = this._replayMode ? this._replayShip() : this.localShip
+    if ((this._playing || this._replayMode) && me) {
+      if (this._playing) this._updateAimVisuals()
       this._updateCamera(me, dtR)
-      this._updateHUD(now)
-      this._map.update(this)
-      this._updateAudioVolumes()
+      if (this._playing) {
+        this._updateHUD(now)
+        this._map.update(this)
+        this._updateAudioVolumes()
+      }
 
       const p = me.group.position
       this.world.setFocus(p.x, p.z)
@@ -706,7 +795,7 @@ export class Game {
       this._sun.target.position.set(sx, 0, sz)
 
       // Spawn-protection blink
-      const lp = this.localPlayer
+      const lp = this._playing ? this.localPlayer : null
       if (lp && !me.sinking) {
         me.group.visible = lp.invulnT <= 0 || Math.sin(now * 0.02) > -0.3
       }
@@ -849,7 +938,7 @@ export class Game {
     this._aimArc = new THREE.Mesh(
       new THREE.BufferGeometry(),
       new THREE.MeshBasicMaterial({
-        color: 0xff5a3c, transparent: true, opacity: 0.95,
+        color: 0xff5a3c, transparent: true, opacity: 0.45,
         depthWrite: false, depthTest: false, fog: false,
       }),
     )
@@ -862,7 +951,7 @@ export class Game {
     this._aimRing = new THREE.Mesh(
       new THREE.RingGeometry(1.5, 2.2, 24),
       new THREE.MeshBasicMaterial({
-        color: 0xff5a3c, transparent: true, opacity: 0.85,
+        color: 0xff5a3c, transparent: true, opacity: 0.6,
         depthWrite: false, depthTest: false, fog: false,
         side: THREE.DoubleSide, depthWrite: false,
       }),
@@ -962,7 +1051,7 @@ export class Game {
     }
     if (count >= 2) {
       const curve = new THREE.CatmullRomCurve3(this._aimPts.slice(0, count))
-      const radius = 0.3 + this._camDist * 0.02
+      const radius = 0.16 + this._camDist * 0.011
       const tube = new THREE.TubeGeometry(curve, Math.max(8, count * 2), radius, 6, false)
       this._aimArc.geometry.dispose()
       this._aimArc.geometry = tube
@@ -1149,7 +1238,8 @@ export class Game {
     if (!me || !lp) return
 
     // Compass
-    const heading  = ((-me.rotationY * 180 / Math.PI) % 360 + 360) % 360
+    // +Z is north, +X is east (the chart's convention); rotY spins N->E->S->W
+    const heading  = ((me.rotationY * 180 / Math.PI) % 360 + 360) % 360
     const dirs     = ['N','NE','E','SE','S','SW','W','NW']
     const compass  = document.getElementById('compass')
     if (compass) {
