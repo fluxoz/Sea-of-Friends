@@ -10,3 +10,4 @@ result-*
 .direnv/
 shadowing_issue.png
 grok-image-*.jpg
+sof-desync-*.json
