@@ -1277,6 +1277,23 @@ export class Game {
     const windSpeedEl = document.getElementById('wind-speed')
     if (windSpeedEl && wind) windSpeedEl.textContent = `${Math.round(wind.speed)}kn`
 
+    // Live ambience: wind bed, luffing sails, creak/gull density
+    if (this._sfx?.ambience) {
+      let nearLand = false
+      const pos = me.position
+      for (const isl of this._world.getIslands()) {
+        const d = Math.hypot(pos.x - isl.x, pos.z - isl.z)
+        if (d < isl.r + 80) { nearLand = true; break }
+      }
+      this._sfx.ambience({
+        windKn: wind ? wind.speed : 0,
+        speedFrac: me.getNormalisedSpeed(),
+        rudder: lp.rudder,
+        luffing: me.sail > 0.05 && (me._inIrons || me._eff <= 0.6),
+        nearLand,
+      })
+    }
+
     // Health
     const hpFill = document.getElementById('hp-fill-inner')
     if (hpFill) {
@@ -1286,6 +1303,35 @@ export class Game {
     }
     const hpText = document.getElementById('hp-text')
     if (hpText) hpText.textContent = `${Math.max(0, Math.round(me.hp))}`
+
+    // Active buffs (top-left stack, under the DHT dot)
+    const buffList = document.getElementById('buff-list')
+    if (buffList) {
+      const buffs = [
+        ['🔵', 'Fast reload', lp.buffReload],
+        ['🛡', 'Armor', lp.buffArmor],
+        ['🔴', 'Chain shot', lp.ammoShots],
+        ['🎯', 'Master gunner', lp.autoShots],
+      ]
+      const sig = buffs.map(b => b[2]).join(',')
+      if (sig !== this._buffSig) {
+        this._buffSig = sig
+        buffList.textContent = ''
+        for (const [icon, name, n] of buffs) {
+          if (!(n > 0)) continue
+          const chip = document.createElement('div')
+          chip.className = 'buff-chip plaque'
+          const label = document.createElement('span')
+          label.textContent = `${icon} ${name}`
+          const count = document.createElement('span')
+          count.className = 'buff-count'
+          count.textContent = `×${n}`
+          chip.appendChild(label)
+          chip.appendChild(count)
+          buffList.appendChild(chip)
+        }
+      }
+    }
 
     // Rudder / wheel indicator
     const rudderEl = document.getElementById('rudder-marker')
@@ -1311,11 +1357,8 @@ export class Game {
     // Buffs + battle damage status
     const statusEl = document.getElementById('status-row')
     if (statusEl) {
+      // (buffs live in the top-left chip stack; this row is battle damage)
       const bits = []
-      if (lp.buffReload > 0) bits.push(`🔵 ${Math.ceil(lp.buffReload)}s`)
-      if (lp.buffArmor > 0)  bits.push(`🛡 ${Math.ceil(lp.buffArmor)}s`)
-      if (lp.ammoShots > 0)  bits.push(`🔴 ×${lp.ammoShots}`)
-      if (lp.autoShots > 0)  bits.push(`🎯 ×${lp.autoShots}`)
       const leaks = me.activeLeaks()
       if (leaks) bits.push(`🌊 LEAK ×${leaks}`)
       const rig = me.activeRigDamage()

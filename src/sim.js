@@ -230,8 +230,7 @@ export class Sim {
       p.reloadP    = Math.max(0, p.reloadP - FIXED_DT)
       p.reloadS    = Math.max(0, p.reloadS - FIXED_DT)
       p.reloadB    = Math.max(0, p.reloadB - FIXED_DT)
-      p.buffReload = Math.max(0, p.buffReload - FIXED_DT)
-      p.buffArmor  = Math.max(0, p.buffArmor - FIXED_DT)
+      // buffReload/buffArmor are shot/hit COUNTS, spent where they apply
       p.invulnT    = Math.max(0, p.invulnT - FIXED_DT)
 
       let fired = false
@@ -429,6 +428,7 @@ export class Sim {
     if (!loaded || p.ship.sinking) return false
 
     const reloadTime = p.buffReload > 0 ? RELOAD_TIME * 0.5 : RELOAD_TIME
+    if (p.buffReload > 0) p.buffReload--
     if (isBow)           { p.reloadB = reloadTime; p.reloadMaxB = reloadTime }
     else if (side === 1) { p.reloadP = reloadTime; p.reloadMaxP = reloadTime }
     else                 { p.reloadS = reloadTime; p.reloadMaxS = reloadTime }
@@ -541,7 +541,7 @@ export class Sim {
     if (target.isPlayer) {
       const p = this.players.get(target.id)
       if (!p || p.invulnT > 0 || p.ship.sinking) return
-      if (p.buffArmor > 0) dmg = Math.max(1, Math.round(dmg * 0.5))
+      if (p.buffArmor > 0) { dmg = Math.max(1, Math.round(dmg * 0.5)); p.buffArmor-- }
       p.lastAttacker = ball.owner
       p.ship.damage(dmg)
       if (zone === 'waterline') p.ship.addLeak()
@@ -632,12 +632,12 @@ export class Sim {
         break
       }
       case 'reload':
-        p.buffReload += 30
-        if (isMe) this.hooks.feed(`${info.icon} Gun crews inspired — half reload for 30s`)
+        p.buffReload += 10
+        if (isMe) this.hooks.feed(`${info.icon} Gun crews inspired — half reload for yer next 10 broadsides`)
         break
       case 'armor':
-        p.buffArmor += 30
-        if (isMe) this.hooks.feed(`${info.icon} Armor plating — half damage taken for 30s`)
+        p.buffArmor += 8
+        if (isMe) this.hooks.feed(`${info.icon} Armor plating — half damage on the next 8 hits ye take`)
         break
       case 'ammo':
         p.ammoShots += 3
