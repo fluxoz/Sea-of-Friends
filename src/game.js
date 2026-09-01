@@ -122,7 +122,10 @@ export class Game {
     this.world = new World(this._scene)
     this.world.build()
     this._combat   = new Combat(this._scene, this._sfx)
-    this._combat.onWaterHit = (x, z) => this.world.addWake(x, z, 6, 0.5, 1, 0)
+    this._combat.onWaterHit = (x, z) => {
+      this.world.addWake(x, z, 4.5, 0.4, 1, 0)
+      this.world.splashFluid(x, z, 3.2, -0.7)   // real expanding ripple ring
+    }
     this.aiFleet   = new AIFleet(this._scene, this.world, this._combat)
     this.forts     = new Forts(this._scene, this.world, this._combat)
     this.powerups  = new Powerups(this._scene, this.world)
@@ -948,16 +951,18 @@ export class Game {
       if (spd < 0.04) return
       const rot = ship.rotationY
       const fwd = { x: Math.sin(rot), z: Math.cos(rot) }
+      // Real fluid wake: the hull presses a moving depression into the
+      // wave-equation field; the physics radiates the V and stern waves
+      this.world.disturbFluid(
+        p.x + fwd.x * ship.halfLength * 0.15,
+        p.z + fwd.z * ship.halfLength * 0.15,
+        ship.halfLength * 1.6, ship.halfWidth * 1.5, rot,
+        -(0.05 + 0.5 * spd) * dtR)
+      // Narrow churned-foam ribbon astern (secondary to the waves)
       this.world.addWake(
         p.x - fwd.x * ship.halfLength * 1.05,
         p.z - fwd.z * ship.halfLength * 1.05,
-        ship.halfWidth * 2.4, (0.9 + 2.6 * spd) * dtR, 2.0, rot)
-      if (spd > 0.3) {
-        this.world.addWake(
-          p.x + fwd.x * ship.halfLength * 0.8,
-          p.z + fwd.z * ship.halfLength * 0.8,
-          ship.halfWidth * 1.7, 2.2 * (spd - 0.3) * dtR, 1.25, rot)
-      }
+        ship.halfWidth * 1.25, (0.08 + 0.3 * spd) * dtR, 1.8, rot)
       ship._wakeAcc = (ship._wakeAcc || 0) + Math.abs(ship.speed) * dtR
       if (ship._wakeAcc > 9) {
         ship._wakeAcc = 0
@@ -975,6 +980,7 @@ export class Game {
     }
     const f = this.localShip?.group.position ?? this._camera.position
     this.world.updateWake(this._renderer, f.x, f.z, dtR)
+    this.world.updateFluid(this._renderer, f.x, f.z, dtR)
   }
 
   // ──────────────────────────────────────────────────────────────────────────

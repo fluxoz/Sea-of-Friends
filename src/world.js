@@ -120,6 +120,9 @@ function waveGLSLBody() {
 
 const OCEAN_VERT = /* glsl */ `
   uniform float uTime;
+  uniform sampler2D uDynMap;
+  uniform vec2  uDynCenter;
+  uniform float uDynSize;
   varying float vH;
   varying vec3  vNormal;
   varying vec3  vWorldPos;
@@ -147,7 +150,13 @@ const OCEAN_VERT = /* glsl */ `
     vec3 pz = vec3(base.x + dz.x, dz.y, base.y + eps + dz.z) - wpos;
     vNormal = normalize(cross(pz, px));
 
-    vH        = d.y;
+    // Dynamic wake heightfield: real displaced water where ships have been
+    vec2 duv = (wpos.xz - uDynCenter) / uDynSize + 0.5;
+    float dInb = step(0.0, duv.x) * step(duv.x, 1.0) * step(0.0, duv.y) * step(duv.y, 1.0);
+    float dyn = texture2D(uDynMap, duv).r * dInb;
+    wpos.y += dyn;
+
+    vH        = d.y + dyn;
     vWorldPos = wpos;
     gl_Position = projectionMatrix * viewMatrix * vec4(wpos, 1.0);
   }
@@ -164,6 +173,9 @@ const OCEAN_FRAG = /* glsl */ `
   uniform sampler2D uFoamMap;
   uniform vec2  uFoamCenter;
   uniform float uFoamSize;
+  uniform sampler2D uDynMap;
+  uniform vec2  uDynCenter;
+  uniform float uDynSize;
   varying float vH;
   varying vec3  vNormal;
   varying vec3  vWorldPos;
@@ -193,6 +205,15 @@ const OCEAN_FRAG = /* glsl */ `
     vec2 g2 = vec2(vnoise(uv2 + vec2(e, 0.0)) - vnoise(uv2 - vec2(e, 0.0)),
                    vnoise(uv2 + vec2(0.0, e)) - vnoise(uv2 - vec2(0.0, e)));
     N.xz += g1 * 0.22 + g2 * 0.15;
+
+    // Wake waves shade like real water: bend the normal by the dynamic
+    // heightfield's gradient so crests catch the sun and troughs shadow
+    vec2 duv = (vWorldPos.xz - uDynCenter) / uDynSize + 0.5;
+    float dInb = step(0.0, duv.x) * step(duv.x, 1.0) * step(0.0, duv.y) * step(duv.y, 1.0);
+    float dT = 1.5 / 512.0;
+    float dhx = texture2D(uDynMap, duv + vec2(dT, 0.0)).r - texture2D(uDynMap, duv - vec2(dT, 0.0)).r;
+    float dhz = texture2D(uDynMap, duv + vec2(0.0, dT)).r - texture2D(uDynMap, duv - vec2(0.0, dT)).r;
+    N.xz -= vec2(dhx, dhz) * 2.3 * dInb;
     N = normalize(N);
 
     vec3 V = normalize(cameraPosition - vWorldPos);
@@ -234,7 +255,11 @@ const OCEAN_FRAG = /* glsl */ `
               * smoothstep(0.0, 0.05, fuv.y) * smoothstep(1.0, 0.95, fuv.y);
     float wf = texture2D(uFoamMap, fuv).r * inb;
     float wfoam = clamp(wf * (0.7 + 0.55 * vnoise(vWorldPos.xz * 0.33 + uTime * 0.25)), 0.0, 1.0);
-    col = mix(col, vec3(0.90, 0.95, 0.98), wfoam * 0.8);
+    col = mix(col, vec3(0.90, 0.95, 0.98), wfoam * 0.55);
+
+    // Whitecaps where the wake waves break (steep dynamic gradient)
+    float wcrest = clamp((abs(dhx) + abs(dhz)) * 1.8 - 0.22, 0.0, 1.0) * dInb;
+    col = mix(col, vec3(0.93, 0.97, 1.0), wcrest * 0.35);
 
     // Manual fog matching the scene's FogExp2 (ShaderMaterial skips it)
     float dist = length(cameraPosition - vWorldPos);
@@ -443,6 +468,9 @@ export class World {
         uFoamMap:     { value: null },
         uFoamCenter:  { value: new THREE.Vector2(0, 0) },
         uFoamSize:    { value: 560 },
+        uDynMap:      { value: null },
+        uDynCenter:   { value: new THREE.Vector2(0, 0) },
+        uDynSize:     { value: 360 },
       },
     })
 
@@ -486,17 +514,19 @@ export class World {
 
     // Fade + recentre-shift pass
     this._fadeScene = new THREE.Scene()
+    // Foam accumulates in R; fade-and-shift keeps the trail glued to the
+    // world as the window recentres
     this._fadeMat = new THREE.ShaderMaterial({
-      uniforms: { uPrev: { value: null }, uShift: { value: new THREE.Vector2() }, uDecay: { value: 1 } },
+      uniforms: { uPrev: { value: null }, uShift: { value: new THREE.Vector2() }, uDecay: { value: new THREE.Vector2(1, 1) } },
       vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
       fragmentShader: `
-        uniform sampler2D uPrev; uniform vec2 uShift; uniform float uDecay;
+        uniform sampler2D uPrev; uniform vec2 uShift; uniform vec2 uDecay;
         varying vec2 vUv;
         void main() {
           vec2 uv = vUv + uShift;
-          float v = (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0)
-            ? 0.0 : texture2D(uPrev, uv).r;
-          gl_FragColor = vec4(vec3(v * uDecay), 1.0);
+          vec2 v = (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0)
+            ? vec2(0.0) : texture2D(uPrev, uv).rg;
+          gl_FragColor = vec4(v * uDecay, 0.0, 1.0);
         }`,
       depthTest: false, depthWrite: false,
     })
@@ -522,12 +552,15 @@ export class World {
         new THREE.MeshBasicMaterial({
           map: blobTex, transparent: true, blending: THREE.AdditiveBlending,
           depthTest: false, depthWrite: false,
+          color: 0xff0000,   // foam writes the R channel only
         }),
       )
       m.visible = false
       this._stampScene.add(m)
       this._stampPool.push(m)
     }
+
+    this._buildFluid()
 
     // Both RTs start black — bind one so the ocean shader never samples null
     if (this._oceanMat) this._oceanMat.uniforms.uFoamMap.value = this._wakeRTs[0].texture
@@ -536,6 +569,167 @@ export class World {
   /** Queue a foam stamp at world (x, z). Render-side only. */
   addWake(x, z, size, intensity, stretch = 1, angle = 0) {
     if (this._wakeQueue.length < 96) this._wakeQueue.push({ x, z, size, intensity, stretch, angle })
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Fluid wake: a real wave-equation heightfield (∂²h/∂t² = c²∇²h) on the
+  // GPU, in a window that follows the ship. Hulls press a moving depression
+  // into the field; the physics radiates the bow V, diverging feathers, and
+  // transverse stern waves on its own. Splashes ring outward the same way.
+  // Render-only: the sim never reads any of it, so GPU float behaviour can
+  // never desync peers.
+  // ──────────────────────────────────────────────────────────────────────────
+
+  _buildFluid() {
+    const RES = 512
+    this._flRes  = RES
+    this._flSize = 360                    // world units covered
+    this._flDT   = 1 / 60                 // fixed substep
+    const dx = this._flSize / RES
+    const c  = 9                          // wake wave speed (world u/s)
+    this._flC2 = (c * this._flDT / dx) ** 2   // CFL ≈ 0.21 — comfortably stable
+
+    const mk = () => new THREE.WebGLRenderTarget(RES, RES, {
+      depthBuffer: false, stencilBuffer: false,
+      type: THREE.HalfFloatType,
+      minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter,
+    })
+    this._flRTs = [mk(), mk()]
+    this._flIdx = 0
+    this._flCenter = new THREE.Vector2(0, 0)
+    this._flAccum = 0
+    this._flQueue = []
+
+    // Wave-equation step (Verlet: R = h, G = h_prev)
+    this._flStepMat = new THREE.ShaderMaterial({
+      uniforms: {
+        uField: { value: null }, uShift: { value: new THREE.Vector2() },
+        uC2: { value: this._flC2 }, uDamp: { value: 0.996 },
+        uTexel: { value: 1 / RES },
+      },
+      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+      fragmentShader: `
+        uniform sampler2D uField; uniform vec2 uShift;
+        uniform float uC2, uDamp, uTexel;
+        varying vec2 vUv;
+        void main() {
+          vec2 uv = vUv + uShift;
+          if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
+            gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return;
+          }
+          vec2 f = texture2D(uField, uv).rg;
+          float lap = texture2D(uField, uv - vec2(uTexel, 0.0)).r
+                    + texture2D(uField, uv + vec2(uTexel, 0.0)).r
+                    + texture2D(uField, uv - vec2(0.0, uTexel)).r
+                    + texture2D(uField, uv + vec2(0.0, uTexel)).r
+                    - 4.0 * f.r;
+          float nh = f.r + (f.r - f.g) * uDamp + uC2 * lap;
+          nh = clamp(nh, -0.8, 0.8);   // small-amplitude waves by construction
+          // absorb near the window border so the edge never reflects
+          float edge = smoothstep(0.0, 0.07, uv.x) * smoothstep(1.0, 0.93, uv.x)
+                     * smoothstep(0.0, 0.07, uv.y) * smoothstep(1.0, 0.93, uv.y);
+          nh *= mix(0.86, 1.0, edge);
+          gl_FragColor = vec4(nh, f.r, 0.0, 1.0);
+        }`,
+      depthTest: false, depthWrite: false,
+    })
+    this._flStepScene = new THREE.Scene()
+    this._flStepScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this._flStepMat))
+
+    // Disturbance stamps: soft ellipses added (can be negative) into R only
+    this._flStampScene = new THREE.Scene()
+    this._flStampPool = []
+    for (let i = 0; i < 40; i++) {
+      const m = new THREE.Mesh(
+        new THREE.PlaneGeometry(1, 1),
+        new THREE.ShaderMaterial({
+          uniforms: { uAmt: { value: 0 } },
+          vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+          fragmentShader: `
+            uniform float uAmt; varying vec2 vUv;
+            void main() {
+              float d = length(vUv * 2.0 - 1.0);
+              float m = smoothstep(1.0, 0.25, d);
+              gl_FragColor = vec4(uAmt * m, 0.0, 0.0, 0.0);
+            }`,
+          transparent: true,
+          blending: THREE.CustomBlending,
+          blendEquation: THREE.AddEquation,
+          blendSrc: THREE.OneFactor, blendDst: THREE.OneFactor,
+          depthTest: false, depthWrite: false,
+        }),
+      )
+      m.visible = false
+      this._flStampScene.add(m)
+      this._flStampPool.push(m)
+    }
+    if (this._oceanMat) {
+      this._oceanMat.uniforms.uDynMap.value = this._flRTs[0].texture
+    }
+  }
+
+  /** Press the water down under a hull (sx along heading, sz across). */
+  disturbFluid(x, z, sx, sz, angle, amt) {
+    if (this._flQueue.length < 40) this._flQueue.push({ x, z, sx, sz, angle, amt })
+  }
+
+  /** A single round impulse (cannonball splash, ram shock). */
+  splashFluid(x, z, r, amt) {
+    this.disturbFluid(x, z, r, r, 0, amt)
+  }
+
+  updateFluid(renderer, fx, fz, dtR) {
+    if (!this._flRTs) return
+    const S = this._flSize
+    const texel = S / this._flRes
+    const cx = Math.round(fx / texel) * texel
+    const cz = Math.round(fz / texel) * texel
+    const shiftX = (cx - this._flCenter.x) / S
+    const shiftZ = (cz - this._flCenter.y) / S
+    this._flCenter.set(cx, cz)
+
+    this._flAccum = Math.min(this._flAccum + Math.min(dtR, 0.1), 4 * this._flDT)
+    let steps = 0
+    while (this._flAccum >= this._flDT && steps < 3) { this._flAccum -= this._flDT; steps++ }
+    if (!steps && (shiftX || shiftZ)) steps = 1   // keep the window glued on
+
+    const oldTarget = renderer.getRenderTarget()
+    const oldAutoClear = renderer.autoClear
+    for (let i = 0; i < steps; i++) {
+      const prev = this._flRTs[this._flIdx]
+      const next = this._flRTs[1 - this._flIdx]
+      this._flIdx = 1 - this._flIdx
+      this._flStepMat.uniforms.uField.value = prev.texture
+      this._flStepMat.uniforms.uShift.value.set(i === 0 ? shiftX : 0, i === 0 ? shiftZ : 0)
+      renderer.setRenderTarget(next)
+      renderer.autoClear = true
+      renderer.render(this._flStepScene, this._wakeCam)
+
+      if (i === 0 && this._flQueue.length) {
+        let used = 0
+        for (const q of this._flQueue) {
+          if (used >= this._flStampPool.length) break
+          const m = this._flStampPool[used++]
+          m.visible = true
+          m.position.set((q.x - cx) / (S / 2), (q.z - cz) / (S / 2), -0.5)
+          m.scale.set(q.sx / (S / 2), q.sz / (S / 2), 1)
+          m.rotation.z = Math.PI / 2 - q.angle
+          m.material.uniforms.uAmt.value = q.amt
+        }
+        for (let j = used; j < this._flStampPool.length; j++) this._flStampPool[j].visible = false
+        this._flQueue.length = 0
+        renderer.autoClear = false
+        renderer.render(this._flStampScene, this._wakeCam)
+      }
+    }
+    renderer.setRenderTarget(oldTarget)
+    renderer.autoClear = oldAutoClear
+
+    if (this._oceanMat) {
+      this._oceanMat.uniforms.uDynMap.value = this._flRTs[this._flIdx].texture
+      this._oceanMat.uniforms.uDynCenter.value.set(cx, cz)
+      this._oceanMat.uniforms.uDynSize.value = S
+    }
   }
 
   /** Advance the wake texture: fade, recentre on (fx, fz), stamp the queue. */
@@ -553,7 +747,8 @@ export class World {
     this._fadeMat.uniforms.uPrev.value = prev.texture
     this._fadeMat.uniforms.uShift.value.set(
       (cx - this._wakeCenter.x) / S, (cz - this._wakeCenter.y) / S)
-    this._fadeMat.uniforms.uDecay.value = Math.pow(0.5, dt / 5.5)   // ~15 s trails
+    const dec = Math.pow(0.5, dt / 5.5)   // ~15 s trails
+    this._fadeMat.uniforms.uDecay.value.set(dec, dec)
     this._wakeCenter.set(cx, cz)
 
     const oldTarget = renderer.getRenderTarget()
