@@ -193,7 +193,7 @@ export class AIFleet {
       const desiredSail = thrust * AI_SAIL_CAP
       const sailDelta   = Math.max(-1, Math.min(1, (desiredSail - ship.sail) * 4))
       ship.updateLocal(dt, sailDelta, turn, wind)
-      ship.setWaveHeight(waveHeight(ship.position.x, ship.position.z, simTime))
+      ship.updateBuoyancy(dt, simTime)
 
       // ── Firing ───────────────────────────────────────────────────────────
       u.reload -= dt
@@ -247,6 +247,8 @@ export class AIFleet {
   save() {
     return this.units.map(u => ({
       x: u.ship.position.x, z: u.ship.position.z,
+      y: u.ship.position.y, yv: u.ship._heaveV,
+      pi: u.ship.pitch, pv: u.ship._pitchV, ro: u.ship.roll, rv: u.ship._rollV,
       r: u.ship.rotationY, sp: u.ship.speed, sl: u.ship.sail,
       hp: u.ship.hp, sk: u.ship.sinking ? u.ship._sinkT : -1,
       st: u.ship._statusT,
@@ -264,7 +266,10 @@ export class AIFleet {
       const u = this.units[i]
       if (!u) return
       const s = u.ship
-      s.position.set(r.x, 0, r.z)
+      s.position.set(r.x, r.y ?? 0, r.z)
+      s.pitch = r.pi ?? 0; s._pitchV = r.pv ?? 0
+      s.roll  = r.ro ?? 0; s._rollV  = r.rv ?? 0
+      s._heaveV = r.yv ?? 0
       s.rotationY = r.r
       s.speed = r.sp
       s.sail  = r.sl
@@ -286,6 +291,7 @@ export class AIFleet {
   hash(acc) {
     for (const u of this.units) {
       acc.num(u.ship.position.x).num(u.ship.position.z)
+         .num(u.ship.position.y).num(u.ship.pitch).num(u.ship.roll)
          .num(u.ship.rotationY).num(u.ship.hp).num(u.reload)
     }
   }

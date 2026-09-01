@@ -122,6 +122,7 @@ export class Game {
     this.world = new World(this._scene)
     this.world.build()
     this._combat   = new Combat(this._scene, this._sfx)
+    this._combat.onWaterHit = (x, z) => this.world.addWake(x, z, 6, 0.5, 1, 0)
     this.aiFleet   = new AIFleet(this._scene, this.world, this._combat)
     this.forts     = new Forts(this._scene, this.world, this._combat)
     this.powerups  = new Powerups(this._scene, this.world)
@@ -813,7 +814,7 @@ export class Game {
       }
       this._combat.renderStep(dtR, alpha)
       this.powerups.renderStep(dtR, waveTime)
-      this._updateWakes(waveTime)
+      this._updateWakes(waveTime, dtR)
     }
 
     const me = this._replayMode ? this._replayShip() : this.localShip
@@ -936,34 +937,44 @@ export class Game {
   }
 
   /** Foam wake + bow spray behind every moving ship (render-only). */
-  _updateWakes(waveTime) {
-    const spawnFor = ship => {
+  _updateWakes(waveTime, dtR) {
+    // Persistent churned-water trail: each ship deposits foam into the
+    // world-space wake texture (dt-scaled so frame rate doesn't change the
+    // look); a light 3D spray puff at the bow survives from the old system
+    const stampFor = ship => {
       if (!ship.group.visible || ship.sinking) return
       const p = ship.group.position
-      if (!ship._wakePrev) { ship._wakePrev = p.clone(); return }
-      ship._wakeAcc = (ship._wakeAcc || 0)
-        + Math.hypot(p.x - ship._wakePrev.x, p.z - ship._wakePrev.z)
-      ship._wakePrev.copy(p)
-      if (ship._wakeAcc < 4.5) return
-      ship._wakeAcc = 0
-
+      const spd = Math.min(1, Math.abs(ship.speed) / MAX_SHIP_SPEED)
+      if (spd < 0.04) return
       const rot = ship.rotationY
       const fwd = { x: Math.sin(rot), z: Math.cos(rot) }
-      // Spray grows with speed — a ship at full clip throws a real bow wave
-      const spd = Math.min(1, Math.abs(ship.speed) / MAX_SHIP_SPEED)
-      const bow = new THREE.Vector3(
-        p.x + fwd.x * ship.halfLength * 0.85, 0, p.z + fwd.z * ship.halfLength * 0.85)
-      bow.y = waveHeight(bow.x, bow.z, waveTime) + 0.25
-      this._combat.foam(bow, 0.6 + spd * 1.1)
-      const stern = new THREE.Vector3(
-        p.x - fwd.x * ship.halfLength * 0.9, 0, p.z - fwd.z * ship.halfLength * 0.9)
-      stern.y = waveHeight(stern.x, stern.z, waveTime) + 0.2
-      this._combat.foam(stern, 1.0 + spd * 1.3)
+      this.world.addWake(
+        p.x - fwd.x * ship.halfLength * 1.05,
+        p.z - fwd.z * ship.halfLength * 1.05,
+        ship.halfWidth * 2.4, (0.9 + 2.6 * spd) * dtR, 2.0, rot)
+      if (spd > 0.3) {
+        this.world.addWake(
+          p.x + fwd.x * ship.halfLength * 0.8,
+          p.z + fwd.z * ship.halfLength * 0.8,
+          ship.halfWidth * 1.7, 2.2 * (spd - 0.3) * dtR, 1.25, rot)
+      }
+      ship._wakeAcc = (ship._wakeAcc || 0) + Math.abs(ship.speed) * dtR
+      if (ship._wakeAcc > 9) {
+        ship._wakeAcc = 0
+        if (spd > 0.45) {
+          const bow = new THREE.Vector3(
+            p.x + fwd.x * ship.halfLength * 0.85, 0, p.z + fwd.z * ship.halfLength * 0.85)
+          bow.y = waveHeight(bow.x, bow.z, waveTime) + 0.25
+          this._combat.foam(bow, 0.5 + spd * 0.8)
+        }
+      }
     }
     if (this.sim) {
-      for (const p of this.sim.players.values()) spawnFor(p.ship)
-      for (const u of this.aiFleet.units) spawnFor(u.ship)
+      for (const p of this.sim.players.values()) stampFor(p.ship)
+      for (const u of this.aiFleet.units) stampFor(u.ship)
     }
+    const f = this.localShip?.group.position ?? this._camera.position
+    this.world.updateWake(this._renderer, f.x, f.z, dtR)
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -1053,7 +1064,12 @@ export class Game {
     const rot  = heading
     const fwd  = { x: Math.sin(rot), z: Math.cos(rot) }
     const yaw  = baseAngle + this._aimTraverse
-    const cosE = Math.cos(this._aimElev)
+    // The deck tilts the battery — preview the same wave-timed elevation the
+    // sim will fire with (fire on the up-roll!)
+    const tiltElev = this._aimElev + (battery === 'bow'
+      ? -(me.pitch ?? 0) * 0.9
+      : battery * (me.roll ?? 0) * 0.9)
+    const cosE = Math.cos(tiltElev)
     const lp   = this.localPlayer
     const v    = BALL_SPEED * (lp && lp.ammoShots > 0 ? 1.35 : 1)
 
@@ -1076,7 +1092,7 @@ export class Game {
     }
     let vx = Math.sin(yaw) * v * cosE + fwd.x * me.speed
     let vz = Math.cos(yaw) * v * cosE + fwd.z * me.speed
-    let vy = Math.sin(this._aimElev) * v
+    let vy = Math.sin(tiltElev) * v
 
     const time = this.world.getTime()
     const STEP = 0.055

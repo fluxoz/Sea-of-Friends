@@ -154,6 +154,15 @@ export class Ship {
     this._rigDmg  = []   // expiry times: each slows the ship while it lasts
     this._waveY   = 0
 
+    // ── SIM: buoyancy dynamics ─────────────────────────────────────────────
+    // Damped springs toward the sampled wave plane; muzzles inherit the tilt,
+    // so gunnery is wave-timed. pitch: + = bow down; roll: + = port down.
+    this.pitch   = 0
+    this.roll    = 0
+    this._heaveV = 0
+    this._pitchV = 0
+    this._rollV  = 0
+
     // ── SIM: previous-tick pose for render interpolation ───────────────────
     this._px = 0; this._pz = 0; this._prot = 0
 
@@ -169,6 +178,8 @@ export class Ship {
     this._recoil      = { 1: 0, [-1]: 0, bow: 0 }
 
     this.group = new THREE.Group()
+    // Yaw, then pitch about the new X, then roll about the ship's forward axis
+    this.group.rotation.order = 'YXZ'
     this._buildModel(color, opts.modelKey ?? 'ship-pirate-large')
     this._buildHealthBar()
     scene.add(this.group)
@@ -364,9 +375,12 @@ export class Ship {
     this.speed   = 0
     this.sail    = 0
     this._heel   = 0
+    this.pitch = 0; this.roll = 0
+    this._heaveV = 0; this._pitchV = 0; this._rollV = 0
     this.clearStatusEffects()
     this.position.set(x, 0, z)
     this._px = x; this._pz = z
+    this._py = 0; this._ppitch = 0; this._proll = 0
     this.group.visible = true
     this._hpSprite.visible = !this.isLocal
     this._redrawHealthBar()
@@ -428,9 +442,56 @@ export class Ship {
 
   /** Record the current pose as the interpolation baseline for this tick. */
   capturePrev() {
-    this._px   = this.position.x
-    this._pz   = this.position.z
-    this._prot = this.rotationY
+    this._px     = this.position.x
+    this._pz     = this.position.z
+    this._prot   = this.rotationY
+    this._py     = this.position.y
+    this._ppitch = this.pitch
+    this._proll  = this.roll
+  }
+
+  /**
+   * Buoyancy dynamics: sample the wave field under bow/stern/port/starboard,
+   * fit heave/pitch/roll targets from the water plane, and integrate damped
+   * springs whose inertia comes from ship mass — heavy hulls answer slowly,
+   * light ones get tossed. Under way, wind pressure on the sails and hard
+   * rudder add heel. Deterministic: dmath wave field + IEEE sqrt/±×÷ only.
+   * @param {boolean} anchored  parked ships take waves but no sailing heel
+   */
+  updateBuoyancy(dt, simTime, anchored = false) {
+    const sy = dsin(this.rotationY), cy = dcos(this.rotationY)
+    const x = this.position.x, z = this.position.z
+    const L = this.halfLength * 1.25
+    const B = this.halfWidth * 1.6 + 1.5
+    const hBow   = waveHeight(x + sy * L, z + cy * L, simTime)
+    const hStern = waveHeight(x - sy * L, z - cy * L, simTime)
+    const hStbd  = waveHeight(x + cy * B, z - sy * B, simTime)
+    const hPort  = waveHeight(x - cy * B, z + sy * B, simTime)
+    const mean = (hBow + hStern + hStbd + hPort) * 0.25
+    this._waveY = mean
+    if (this.sinking) return
+
+    const m = Math.max(0.6, (this.maxHp ?? 100) / 100)
+    const invSq = 1 / Math.sqrt(m)
+
+    const heaveT = mean * 0.6
+    const pitchT = (hStern - hBow) / (2 * L) * 0.85
+    let rollT    = (hStbd - hPort) / (2 * B) * 0.85
+    if (!anchored) {
+      rollT += dsin(this._lastRel ?? 0) * (this._windSpd ?? 0) * 0.0035 * this.sail
+             + (this._lastTurn ?? 0) * (this.speed / MAX_SHIP_SPEED) * 0.08
+    }
+
+    const wH = 3.2 * invSq, wP = 2.6 * invSq, wR = 2.1 * invSq
+    this._heaveV += (wH * wH * (heaveT - this.position.y) - 0.9 * wH * this._heaveV) * dt
+    this.position.y += this._heaveV * dt
+    this._pitchV += (wP * wP * (pitchT - this.pitch) - 1.0 * wP * this._pitchV) * dt
+    this.pitch += this._pitchV * dt
+    this._rollV += (wR * wR * (rollT - this.roll) - 0.7 * wR * this._rollV) * dt
+    this.roll += this._rollV * dt
+    // Safety clamps — capsizing is not (yet) on the menu
+    if (this.pitch > 0.35) this.pitch = 0.35; else if (this.pitch < -0.35) this.pitch = -0.35
+    if (this.roll  > 0.45) this.roll  = 0.45; else if (this.roll  < -0.45) this.roll  = -0.45
   }
 
   /**
@@ -539,17 +600,26 @@ export class Ship {
     // Exponential pose smoothing (~70 ms) irons out lockstep tick jitter:
     // ticks land on the pump timer, not on frame boundaries, so the raw
     // interpolation clock stutters against `executed` at speed.
+    let iy  = (this._py ?? this.position.y)
+            + (this.position.y - (this._py ?? this.position.y)) * alpha
+    let ipt = (this._ppitch ?? this.pitch) + (this.pitch - (this._ppitch ?? this.pitch)) * alpha
+    let irl = (this._proll ?? this.roll) + (this.roll - (this._proll ?? this.roll)) * alpha
+
     if (!this._rp || Math.abs(ix - this._rp.x) > 40 || Math.abs(iz - this._rp.z) > 40) {
-      this._rp = { x: ix, z: iz, r: irot }     // snap on spawn/teleport
+      this._rp = { x: ix, z: iz, r: irot, y: iy, pt: ipt, rl: irl }  // snap on spawn/teleport
     }
     const k = 1 - Math.exp(-dtRender * 14)
     this._rp.x += (ix - this._rp.x) * k
     this._rp.z += (iz - this._rp.z) * k
+    this._rp.y  = (this._rp.y  ?? iy)  + (iy  - (this._rp.y  ?? iy))  * k
+    this._rp.pt = (this._rp.pt ?? ipt) + (ipt - (this._rp.pt ?? ipt)) * k
+    this._rp.rl = (this._rp.rl ?? irl) + (irl - (this._rp.rl ?? irl)) * k
     let dr2 = irot - this._rp.r
     while (dr2 >  PI) dr2 -= PI * 2
     while (dr2 < -PI) dr2 += PI * 2
     this._rp.r += dr2 * k
     ix = this._rp.x; iz = this._rp.z; irot = this._rp.r
+    iy = this._rp.y; ipt = this._rp.pt; irl = this._rp.rl
 
     if (this.sinking) {
       const t = this._sinkT
@@ -561,20 +631,16 @@ export class Ship {
       return
     }
 
-    const wy = waveHeight(ix, iz, waveTime) * 0.55
-    this.group.position.set(ix, wy, iz)
+    // Pose comes straight from the sim's buoyancy springs, interpolated —
+    // the same tilt the ballistics use, so what you see is what fires
+    this.group.position.set(ix, iy, iz)
     this.group.rotation.y = irot
+    this.group.rotation.x = ipt
+    this.group.rotation.z = irl
 
-    // Bob + heel (render-only)
     this._bobTime += dtRender
-    const heelTarget = (dsin(this._lastRel) * (this._windSpd ?? 19) * 0.0035) * this.sail
-                     + this._lastTurn * (this.speed / MAX_SHIP_SPEED) * 0.06
-    this._heel += (heelTarget - this._heel) * Math.min(1, 2 * dtRender)
-
     const t     = this._bobTime
     const phase = this._bobPhase
-    this.group.rotation.z = Math.sin(t * 0.7 + phase) * 0.035 + this._heel
-    this.group.rotation.x = Math.sin(t * 0.5 + phase + 1) * 0.025
 
     if (this._flag) {
       this._flag.rotation.y = Math.sin(t * 2.5) * 0.3 + 0.3
