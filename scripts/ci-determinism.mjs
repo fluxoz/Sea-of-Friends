@@ -55,7 +55,9 @@ const mk = async name => {
       console.log(`console[${name}]:`, m.text().slice(0, 160))
     }
   })
-  await page.goto(`http://localhost:${VITE_PORT}/?relays=${RELAYS}&lagms=150`)
+  // noaudio: keep the gate about sim determinism — audio decode + bed mixing
+  // stole enough CPU on the 2-vCPU runner to stall a peer into ejection
+  await page.goto(`http://localhost:${VITE_PORT}/?relays=${RELAYS}&lagms=150&noaudio=1`)
   // Asset preload (30+ models) is slow on a 2-core software-GL runner
   await page.waitForSelector('#join-btn', { state: 'visible', timeout: 180000 })
   await page.fill('#name-input', name)
@@ -102,6 +104,20 @@ const probe = page => page.evaluate(() => {
 const [a, b] = await Promise.all([probe(A), probe(B)])
 console.log('A:', JSON.stringify({ ...a, hashes: a.hashes.length }))
 console.log('B:', JSON.stringify({ ...b, hashes: b.hashes.length }))
+
+// On desync, save both forensics bundles so the failure names the field
+if (a.desync || b.desync) {
+  const { writeFileSync } = await import('node:fs')
+  for (const [peer, page] of [['A', A], ['B', B]]) {
+    try {
+      const bundle = await page.evaluate(() => window.__desyncBundle ?? null)
+      if (bundle) {
+        writeFileSync(`desync-${peer}.json`, JSON.stringify(bundle))
+        console.log(`${peer} bundle: guilty=${bundle.guilty?.join(',')} tick=${bundle.tick} → desync-${peer}.json`)
+      }
+    } catch {}
+  }
+}
 
 for (const [peer, r] of [['A', a], ['B', b]]) {
   if (r.state !== 'running' || !r.live) failures.push(`${peer} not running/live`)

@@ -27,6 +27,10 @@ export class SFX {
    */
   init() {
     if (this.ctx) return
+    // Test hook: the CI determinism gate measures the sim, not the audio
+    // thread — on a starved runner the decode + bed mixing load can stall a
+    // peer into ejection. Every public entry point guards on a null ctx.
+    if (/[?&]noaudio\b/.test(location.search)) return
     this.ctx = new (window.AudioContext || window.webkitAudioContext)()
 
     this._master = this.ctx.createGain()
