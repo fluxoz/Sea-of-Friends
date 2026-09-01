@@ -944,9 +944,12 @@ export class Game {
     // Persistent churned-water trail: each ship deposits foam into the
     // world-space wake texture (dt-scaled so frame rate doesn't change the
     // look); a light 3D spray puff at the bow survives from the old system
+    const focus = this.localShip?.group.position ?? this._camera.position
     const stampFor = ship => {
       if (!ship.group.visible || ship.sinking) return
       const p = ship.group.position
+      // Outside the fluid/foam windows a stamp is wasted work
+      if (Math.abs(p.x - focus.x) > 300 || Math.abs(p.z - focus.z) > 300) return
       const spd = Math.min(1, Math.abs(ship.speed) / MAX_SHIP_SPEED)
       if (spd < 0.04) return
       const rot = ship.rotationY
