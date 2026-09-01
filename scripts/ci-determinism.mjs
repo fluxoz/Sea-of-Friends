@@ -51,6 +51,12 @@ const mk = async name => {
   // Small viewport: SwiftShader software-rasterizes every pixel on the
   // 2-vCPU runner, and render cost was starving the sim into stall-ejects
   const page = await (await browser.newContext({ viewport: { width: 480, height: 320 } })).newPage()
+  // CPU_THROTTLE=n slows the page n× via CDP — reproduces the starved-CI
+  // deep-rollback regime on a fast dev machine
+  if (process.env.CPU_THROTTLE) {
+    const cdp = await page.context().newCDPSession(page)
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: +process.env.CPU_THROTTLE })
+  }
   page.on('pageerror', e => failures.push(`pageerror[${name}]: ${e.message.slice(0, 200)}`))
   page.on('console', m => {
     if (m.type() === 'error' && !/tracker|WebSocket|wss|ERR_|404/i.test(m.text())) {

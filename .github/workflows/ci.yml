@@ -29,6 +29,14 @@ jobs:
       - name: Determinism gate (two peers, lag, rollback, hash compare)
         run: node scripts/ci-determinism.mjs
 
+      - name: Upload desync forensics bundles
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desync-bundles
+          path: desync-*.json
+          if-no-files-found: ignore
+
   deploy:
     needs: build-and-determinism
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
