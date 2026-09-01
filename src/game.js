@@ -538,8 +538,10 @@ export class Game {
     const hud = document.createElement('div')
     hud.id = 'replay-hud'
     hud.style.cssText = 'position:fixed;top:1rem;left:50%;transform:translateX(-50%);z-index:400;'
-      + 'background:rgba(10,22,40,0.9);color:#c8a96e;border:1px solid rgba(200,169,110,0.4);'
-      + 'border-radius:6px;padding:0.45rem 1.1rem;font-size:0.85rem;pointer-events:none'
+      + 'background:linear-gradient(180deg,#f8eed2,#ddc795);color:#4a3018;border:2px solid #6b4a26;'
+      + 'border-radius:10px;padding:0.45rem 1.2rem;font-size:0.85rem;'
+      + "font-family:'Fredoka','Trebuchet MS',sans-serif;font-weight:600;"
+      + 'box-shadow:0 3px 0 rgba(42,26,10,0.45),0 6px 12px rgba(0,0,0,0.4);pointer-events:none'
     document.body.appendChild(hud)
     this._updateReplayHud()
   }

@@ -24,8 +24,10 @@ function watchForNewVersion() {
         const el = document.createElement('div')
         el.id = 'update-banner'
         el.style.cssText = 'position:fixed;top:0;left:50%;transform:translateX(-50%);z-index:500;'
-          + 'background:rgba(10,22,40,0.95);color:#c8a96e;border:1px solid rgba(200,169,110,0.5);'
-          + 'border-top:none;border-radius:0 0 6px 6px;padding:0.5rem 1.1rem;font-size:0.85rem;'
+          + 'background:linear-gradient(180deg,#f8eed2,#ddc795);color:#4a3018;border:2px solid #6b4a26;'
+          + 'border-top:none;border-radius:0 0 12px 12px;padding:0.5rem 1.2rem;font-size:0.85rem;'
+          + "font-family:'Fredoka','Trebuchet MS',sans-serif;font-weight:600;"
+          + 'box-shadow:0 3px 0 rgba(42,26,10,0.45),0 8px 18px rgba(0,0,0,0.45);'
           + 'cursor:pointer;pointer-events:all'
         el.textContent = `⚓ A new version has shipped (${version}) — click to refresh and rejoin the fleet`
         el.addEventListener('click', () => location.reload())
@@ -344,7 +346,7 @@ async function init() {
  */
 function burnMenu(done) {
   const panel = document.getElementById('join-panel')
-  const fading = ['title', 'tagline', 'features', 'join-hint']
+  const fading = ['title', 'tagline', 'features', 'join-hint', 'public-seas-btn']
     .map(id => document.getElementById(id)).filter(Boolean)
   const rect = panel.getBoundingClientRect()
 
