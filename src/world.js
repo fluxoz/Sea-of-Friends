@@ -150,6 +150,9 @@ const OCEAN_FRAG = /* glsl */ `
   uniform vec3  uFogColor;
   uniform float uFogDensity;
   uniform float uTime;
+  uniform sampler2D uFoamMap;
+  uniform vec2  uFoamCenter;
+  uniform float uFoamSize;
   varying float vH;
   varying vec3  vNormal;
   varying vec3  vWorldPos;
@@ -212,6 +215,15 @@ const OCEAN_FRAG = /* glsl */ `
                 + 0.5 * vnoise(vWorldPos.xz * 0.17 - uTime * 0.08);
     float foam = smoothstep(2.1, 3.6, vH + (foamN - 0.75) * 0.9);
     col = mix(col, vec3(0.92, 0.96, 1.0), foam * 0.6);
+
+    // Wake foam: churned water stamped by ships and splashes into a
+    // world-space trail texture that follows the camera
+    vec2 fuv = (vWorldPos.xz - uFoamCenter) / uFoamSize + 0.5;
+    float inb = smoothstep(0.0, 0.05, fuv.x) * smoothstep(1.0, 0.95, fuv.x)
+              * smoothstep(0.0, 0.05, fuv.y) * smoothstep(1.0, 0.95, fuv.y);
+    float wf = texture2D(uFoamMap, fuv).r * inb;
+    float wfoam = clamp(wf * (0.7 + 0.55 * vnoise(vWorldPos.xz * 0.33 + uTime * 0.25)), 0.0, 1.0);
+    col = mix(col, vec3(0.90, 0.95, 0.98), wfoam * 0.8);
 
     // Manual fog matching the scene's FogExp2 (ShaderMaterial skips it)
     float dist = length(cameraPosition - vWorldPos);
@@ -276,6 +288,7 @@ export class World {
   build() {
     this._buildSky()
     this._buildOcean()
+    this._buildWake()
   }
 
   /**
@@ -416,6 +429,9 @@ export class World {
         uSunDir:      { value: this._sunDir || new THREE.Vector3(0.5, 0.8, 0.3) },
         uFogColor:    { value: new THREE.Color(0x88ccff) },
         uFogDensity:  { value: 0.00065 },
+        uFoamMap:     { value: null },
+        uFoamCenter:  { value: new THREE.Vector2(0, 0) },
+        uFoamSize:    { value: 560 },
       },
     })
 
@@ -435,6 +451,131 @@ export class World {
     skirt.position.y = SKIRT_Y
     this._skirtMesh = skirt
     this.scene.add(skirt)
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Wake foam: a world-space trail texture ships and splashes stamp into.
+  // Two RTs ping-pong: fade+shift pass, then additive stamps. Render-only —
+  // the sim never reads it, so GPU float differences can't desync peers.
+  // ──────────────────────────────────────────────────────────────────────────
+
+  _buildWake() {
+    const RES = 512
+    this._wakeRes  = RES
+    this._wakeSize = 560           // world units covered by the texture
+    const mk = () => new THREE.WebGLRenderTarget(RES, RES, {
+      depthBuffer: false, stencilBuffer: false,
+      minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter,
+    })
+    this._wakeRTs   = [mk(), mk()]
+    this._wakeIdx   = 0
+    this._wakeCenter = new THREE.Vector2(0, 0)
+    this._wakeQueue  = []
+    this._wakeCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1)
+
+    // Fade + recentre-shift pass
+    this._fadeScene = new THREE.Scene()
+    this._fadeMat = new THREE.ShaderMaterial({
+      uniforms: { uPrev: { value: null }, uShift: { value: new THREE.Vector2() }, uDecay: { value: 1 } },
+      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+      fragmentShader: `
+        uniform sampler2D uPrev; uniform vec2 uShift; uniform float uDecay;
+        varying vec2 vUv;
+        void main() {
+          vec2 uv = vUv + uShift;
+          float v = (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0)
+            ? 0.0 : texture2D(uPrev, uv).r;
+          gl_FragColor = vec4(vec3(v * uDecay), 1.0);
+        }`,
+      depthTest: false, depthWrite: false,
+    })
+    this._fadeScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this._fadeMat))
+
+    // Soft-blob stamp pool (additive quads placed in NDC)
+    const cv = document.createElement('canvas')
+    cv.width = cv.height = 64
+    const g = cv.getContext('2d')
+    const grad = g.createRadialGradient(32, 32, 2, 32, 32, 31)
+    grad.addColorStop(0, 'rgba(255,255,255,1)')
+    grad.addColorStop(0.55, 'rgba(255,255,255,0.5)')
+    grad.addColorStop(1, 'rgba(255,255,255,0)')
+    g.fillStyle = grad
+    g.fillRect(0, 0, 64, 64)
+    const blobTex = new THREE.CanvasTexture(cv)
+
+    this._stampScene = new THREE.Scene()
+    this._stampPool = []
+    for (let i = 0; i < 48; i++) {
+      const m = new THREE.Mesh(
+        new THREE.PlaneGeometry(1, 1),
+        new THREE.MeshBasicMaterial({
+          map: blobTex, transparent: true, blending: THREE.AdditiveBlending,
+          depthTest: false, depthWrite: false,
+        }),
+      )
+      m.visible = false
+      this._stampScene.add(m)
+      this._stampPool.push(m)
+    }
+
+    // Both RTs start black — bind one so the ocean shader never samples null
+    if (this._oceanMat) this._oceanMat.uniforms.uFoamMap.value = this._wakeRTs[0].texture
+  }
+
+  /** Queue a foam stamp at world (x, z). Render-side only. */
+  addWake(x, z, size, intensity, stretch = 1, angle = 0) {
+    if (this._wakeQueue.length < 96) this._wakeQueue.push({ x, z, size, intensity, stretch, angle })
+  }
+
+  /** Advance the wake texture: fade, recentre on (fx, fz), stamp the queue. */
+  updateWake(renderer, fx, fz, dt) {
+    if (!this._wakeRTs) return
+    const S = this._wakeSize
+    const texel = S / this._wakeRes
+    const cx = Math.round(fx / texel) * texel
+    const cz = Math.round(fz / texel) * texel
+
+    const prev = this._wakeRTs[this._wakeIdx]
+    const next = this._wakeRTs[1 - this._wakeIdx]
+    this._wakeIdx = 1 - this._wakeIdx
+
+    this._fadeMat.uniforms.uPrev.value = prev.texture
+    this._fadeMat.uniforms.uShift.value.set(
+      (cx - this._wakeCenter.x) / S, (cz - this._wakeCenter.y) / S)
+    this._fadeMat.uniforms.uDecay.value = Math.pow(0.5, dt / 5.5)   // ~15 s trails
+    this._wakeCenter.set(cx, cz)
+
+    const oldTarget = renderer.getRenderTarget()
+    const oldAutoClear = renderer.autoClear
+    renderer.setRenderTarget(next)
+    renderer.autoClear = true
+    renderer.render(this._fadeScene, this._wakeCam)
+
+    let used = 0
+    for (const q of this._wakeQueue) {
+      if (used >= this._stampPool.length) break
+      const m = this._stampPool[used++]
+      m.visible = true
+      m.position.set((q.x - cx) / (S / 2), (q.z - cz) / (S / 2), -0.5)
+      m.scale.set((q.size * q.stretch) / (S / 2), q.size / (S / 2), 1)
+      // compass heading (fwd = sin r, cos r in XZ) → NDC angle from +x
+      m.rotation.z = Math.PI / 2 - q.angle
+      m.material.opacity = Math.min(1, q.intensity)
+    }
+    for (let i = used; i < this._stampPool.length; i++) this._stampPool[i].visible = false
+    this._wakeQueue.length = 0
+    if (used) {
+      renderer.autoClear = false
+      renderer.render(this._stampScene, this._wakeCam)
+    }
+    renderer.setRenderTarget(oldTarget)
+    renderer.autoClear = oldAutoClear
+
+    if (this._oceanMat) {
+      this._oceanMat.uniforms.uFoamMap.value = next.texture
+      this._oceanMat.uniforms.uFoamCenter.value.set(cx, cz)
+      this._oceanMat.uniforms.uFoamSize.value = S
+    }
   }
 
   /**
