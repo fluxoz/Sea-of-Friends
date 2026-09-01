@@ -1,9 +1,10 @@
 /**
  * audio.js – Proximity voice chat with 3-D spatial audio and crew channels.
  *
- * Quality: each peer's voice runs through an HRTF PannerNode positioned at
- * their ship, with the listener at the camera — voices come from the right
- * direction and fade with distance naturally.
+ * Quality: each peer's voice runs through an equal-power PannerNode positioned
+ * at their ship, with the listener at the camera — voices come from the right
+ * direction and fade with distance naturally. Spatial params update at 10 Hz
+ * with smoothing; the audio thread stays light so voices never crackle.
  *
  * Efficiency (WebRTC already gives us Opus; we make it cheap to carry):
  *   • mono capture (one Opus channel, not two)
@@ -217,7 +218,9 @@ export class ProximityAudio {
     const pgain = this._context.createGain()
     pgain.gain.value = 1
     const panner = this._context.createPanner()
-    panner.panningModel  = 'HRTF'
+    // equalpower, not HRTF: HRTF runs a convolution per voice on the audio
+    // thread and underruns (crackle) alongside the render loop
+    panner.panningModel  = 'equalpower'
     panner.distanceModel = 'linear'
     panner.refDistance   = 20
     panner.maxDistance   = MAX_HEAR_DISTANCE
@@ -247,6 +250,12 @@ export class ProximityAudio {
    */
   update({ listener, forward, myChannel, peers, connectedIds }) {
     if (!this._enabled || !this._context) return
+    // 10 Hz, not every frame: each setTargetAtTime queues an automation event
+    // on the audio thread, and 60 Hz × ~14 params × peers floods the queue
+    // into audible glitching. The smoothing constants cover the gaps.
+    const nowMs = performance.now()
+    if (nowMs - (this._lastUpdateMs || 0) < 100) return
+    this._lastUpdateMs = nowMs
     const ctx = this._context
     const t = ctx.currentTime
 

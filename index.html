@@ -504,8 +504,10 @@
     }
     .latency-row {
       display: grid;
-      grid-template-columns: minmax(6em, 1fr) 2.2em 2.2em 3em 3.6em 3.2em;
-      column-gap: 0.45em; align-items: center;
+      /* rem tracks: the header row has a smaller font-size, so em-based
+         tracks would drift off the data columns */
+      grid-template-columns: minmax(5rem, 1fr) 1.8rem 1.8rem 2.4rem 2.9rem 2.6rem;
+      column-gap: 0.36rem; align-items: center;
       padding: 0.28rem 0.8rem;
       font-size: 0.8rem; color: #e8ddc0; font-weight: 500;
       border-bottom: 1px solid rgba(255,255,255,0.06);
@@ -912,11 +914,25 @@
     .chat-bubble.emote { color: #7a4a8a; font-style: italic; }
     .chat-bubble.fading { opacity: 0; }
 
-    /* ── Network status ──────────────────────────────────────── */
-    #net-status {
+    /* ── Top-left stack: DHT dot, FPS, active buffs ──────────── */
+    #hud-top-left {
       position: absolute; top: 1rem; left: 1rem;
+      display: flex; flex-direction: column; align-items: flex-start;
+      gap: 0.45rem; pointer-events: none;
+    }
+    #net-status {
       color: #7ddc6e; font-size: 0.72rem; opacity: 0.8; font-weight: 600;
       text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+    }
+    #buff-list { display: flex; flex-direction: column; align-items: flex-start; gap: 0.35rem; }
+    .buff-chip {
+      font-size: 0.75rem; padding: 0.24rem 0.7rem;
+      display: flex; align-items: center; gap: 0.4rem;
+      white-space: nowrap;
+    }
+    .buff-chip .buff-count {
+      font-size: 0.85rem; color: #8a2f22;
+      min-width: 1.6em; text-align: right;
     }
 
     /* ── Top-right icon buttons: state overrides ─────────────── */
@@ -1049,10 +1065,9 @@
     #settings-panel input[type="range"] { accent-color: var(--gold); width: 6.9rem; }
 
     #fps-counter {
-      position: absolute; top: 3.1rem; left: 1rem;
       padding: 0.28rem 0.65rem;
       font-size: 0.78rem; font-variant-numeric: tabular-nums;
-      display: none; pointer-events: none;
+      display: none;
     }
   </style>
 </head>
@@ -1123,7 +1138,11 @@
   <canvas id="canvas"></canvas>
 
   <div id="hud" style="display:none">
-    <div id="net-status">● DHT</div>
+    <div id="hud-top-left">
+      <div id="net-status">● DHT</div>
+      <div id="fps-counter" class="plaque-wood">60 fps</div>
+      <div id="buff-list"></div>
+    </div>
     <div id="hud-top-right">
       <button id="voice-btn" class="btn3d btn-green btn-icon" title="Voice chat">🎤</button>
       <div id="gold-count" class="plaque">🪙 0</div>
@@ -1151,7 +1170,6 @@
         <input type="range" id="set-sfx" min="0" max="100" step="5" />
       </div>
     </div>
-    <div id="fps-counter" class="plaque-wood">60 fps</div>
     <div id="invite-panel" class="panel nails">
       <h3 class="ribbon">Summon Yer Crew</h3>
       <canvas id="invite-qr" width="220" height="220"></canvas>
