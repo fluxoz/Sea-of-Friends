@@ -156,7 +156,12 @@ export class Combat {
 
       const yaw   = sideAngle + traverse + (rng.next() - 0.5) * 0.09 * jitterScale
       const speed = BALL_SPEED * speedMul * (1 + (rng.next() - 0.5) * 0.14 * jitterScale)
-      const elev  = elevation * (1 + (rng.next() - 0.5) * 0.15 * jitterScale)
+      // Guns are fixed to the deck: the hull's roll tilts the whole battery.
+      // Fire on the up-roll and the volley carries; on the down-roll it
+      // ploughs the sea. side=+1 is the battery on the rolled-up side when
+      // roll>0 (port down), so the tilt adds as side·roll.
+      const elev  = (elevation + side * (ship.roll ?? 0) * 0.9)
+                  * (1 + (rng.next() - 0.5) * 0.15 * jitterScale)
       const cosE  = dcos(elev)
       balls.push([
         px, py, pz,
@@ -195,7 +200,9 @@ export class Combat {
 
       const yaw   = rot + traverse + (rng.next() - 0.5) * 0.05
       const speed = BALL_SPEED * speedMul * (1 + (rng.next() - 0.5) * 0.08)
-      const elev  = elevation * (1 + (rng.next() - 0.5) * 0.1)
+      // Chasers point along the deck: pitching bow-down (+) depresses them
+      const elev  = (elevation - (ship.pitch ?? 0) * 0.9)
+                  * (1 + (rng.next() - 0.5) * 0.1)
       const cosE  = dcos(elev)
       balls.push([
         px, py, pz,
@@ -270,6 +277,7 @@ export class Combat {
       // Water splashdown
       if (ball.y <= waveHeight(ball.x, ball.z, simTime)) {
         this._splash(ball)
+        this.onWaterHit?.(ball.x, ball.z)
         this.sfx.splash(distToListener)
         this._removeBall(i)
         continue

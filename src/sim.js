@@ -189,7 +189,7 @@ export class Sim {
         p.rudder += p.rudder > 0 ? -step : step
         ship.updateLocal(FIXED_DT, -1, 0, this.wind)
         this._collideIslands(p)
-        ship.setWaveHeight(waveHeight(ship.position.x, ship.position.z, simTime))
+        ship.updateBuoyancy(FIXED_DT, simTime, true)
         if (ship.hp <= 0) this._sinkPlayer(p, p.lastAttacker)
         continue
       }
@@ -225,7 +225,7 @@ export class Sim {
 
       ship.updateLocal(FIXED_DT, sd, turn, this.wind, !!inp.r)
       this._collideIslands(p)
-      ship.setWaveHeight(waveHeight(ship.position.x, ship.position.z, simTime))
+      ship.updateBuoyancy(FIXED_DT, simTime)
 
       p.reloadP    = Math.max(0, p.reloadP - FIXED_DT)
       p.reloadS    = Math.max(0, p.reloadS - FIXED_DT)
@@ -662,6 +662,8 @@ export class Sim {
       const s = p.ship
       players.push({
         id: pid, cls: p.cls, x: s.position.x, z: s.position.z, r: s.rotationY,
+        y: s.position.y, yv: s._heaveV, pi: s.pitch, pv: s._pitchV,
+        ro: s.roll, rv: s._rollV,
         sp: s.speed, sl: s.sail, hp: s.hp,
         sk: s.sinking ? s._sinkT : -1, st: s._statusT,
         lk: s._leaks.slice(), rg: s._rigDmg.slice(),
@@ -705,7 +707,10 @@ export class Sim {
     for (const row of snap.players) {
       const p = this.players.get(row.id)
       const s = p.ship
-      s.position.set(row.x, 0, row.z)
+      s.position.set(row.x, row.y ?? 0, row.z)
+      s.pitch = row.pi ?? 0; s._pitchV = row.pv ?? 0
+      s.roll  = row.ro ?? 0; s._rollV  = row.rv ?? 0
+      s._heaveV = row.yv ?? 0
       s.rotationY = row.r
       s.speed = row.sp
       s.sail  = row.sl
@@ -757,7 +762,10 @@ export class Sim {
     for (const row of snap.players) {
       const ship = new Ship(this.scene, row.id.slice(0, 8), 0xc8a96e,
         row.id === this.hooks.selfId, { shipClass: row.cls ?? 'frigate' })
-      ship.position.set(row.x, 0, row.z)
+      ship.position.set(row.x, row.y ?? 0, row.z)
+      ship.pitch = row.pi ?? 0; ship._pitchV = row.pv ?? 0
+      ship.roll  = row.ro ?? 0; ship._rollV  = row.rv ?? 0
+      ship._heaveV = row.yv ?? 0
       ship.rotationY = row.r
       ship.speed = row.sp
       ship.sail  = row.sl
@@ -795,6 +803,7 @@ export class Sim {
       const p = this.players.get(pid)
       const s = p.ship
       pl.str(pid).num(s.position.x).num(s.position.z).num(s.rotationY)
+        .num(s.position.y).num(s.pitch).num(s.roll)
         .num(s.hp).num(s.sail).num(s.speed)
         .int(p.gold).int(p.k).int(p.d).int(p.ammoShots).int(p.autoShots)
         .num(p.reloadP).num(p.reloadS).num(p.reloadB)
