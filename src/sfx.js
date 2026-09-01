@@ -41,7 +41,9 @@ export class SFX {
 
     this._startAmbient()
     this._scheduleGull()
+    this._scheduleCreak()
     this._loadCannonSamples()
+    this._loadAmbience()
   }
 
   /** Real CC0 cannon recordings (rubberduck, OpenGameArt) — decoded async;
@@ -429,8 +431,13 @@ export class SFX {
 
   // ── Ambient bed ────────────────────────────────────────────────────────────
 
+  // ── Ambience: real recordings, driven by live ship/world state ────────────
+  // Beds (ocean wash, wind, luffing sails) loop with an equal-power crossfade
+  // so the seams never click; one-shots (hull creaks, gull cries) fire on
+  // randomized schedules whose density follows what the ship is doing.
+
   _startAmbient() {
-    // Endless wash of filtered noise, gently swelling like surf
+    // Synth fallback bed — replaced by the recorded ocean once it decodes
     const src = this.ctx.createBufferSource()
     src.buffer = this._noise
     src.loop   = true
@@ -442,7 +449,6 @@ export class SFX {
     const gain = this.ctx.createGain()
     gain.gain.value = 0.05
 
-    // Slow LFO on the gain = swell of the sea
     const lfo = this.ctx.createOscillator()
     lfo.type = 'sine'
     lfo.frequency.value = 0.09
@@ -453,21 +459,152 @@ export class SFX {
     src.connect(filter).connect(gain).connect(this._master)
     src.start()
     lfo.start()
+    this._synthBedGain = gain
   }
 
-  /** Occasional distant seagull cries. */
+  async _loadAmbience() {
+    const dec = async name => {
+      const r = await fetch(`/assets/sounds/${name}.ogg`)
+      if (!r.ok) throw new Error(name)
+      return this.ctx.decodeAudioData(await r.arrayBuffer())
+    }
+    const tryDec = name => dec(name).catch(() => null)
+
+    // One-shot pools: whatever decodes, plays
+    this._creakBufs = (await Promise.all(
+      [1, 2, 3, 4, 5, 6, 7].map(i => tryDec(`creak_${i}`)))).filter(Boolean)
+    this._gullBufs = (await Promise.all(
+      [1, 2, 3, 4, 5].map(i => tryDec(`gull_${i}`)))).filter(Boolean)
+
+    // Beds — swap the synth surf out only if the recorded ocean made it
+    const [ocean, wind, sail] = await Promise.all(
+      ['amb_ocean', 'amb_wind', 'amb_sail'].map(tryDec))
+    if (!this.ctx) return
+    const t = this.ctx.currentTime
+    if (ocean) {
+      this._oceanGain = this.ctx.createGain()
+      this._oceanGain.gain.value = 0.0001
+      this._oceanGain.gain.setTargetAtTime(0.38, t, 2)
+      this._oceanGain.connect(this._master)
+      this._loopBed(ocean, this._oceanGain)
+      if (this._synthBedGain) this._synthBedGain.gain.setTargetAtTime(0.0001, t, 2)
+    }
+    if (wind) {
+      this._windGain = this.ctx.createGain()
+      this._windGain.gain.value = 0.0001
+      this._windGain.connect(this._master)
+      this._loopBed(wind, this._windGain)
+    }
+    if (sail) {
+      this._sailGain = this.ctx.createGain()
+      this._sailGain.gain.value = 0.0001
+      this._sailGain.connect(this._master)
+      this._loopBed(sail, this._sailGain)
+    }
+  }
+
+  /** Loop a buffer forever, overlapping each pass with an equal-power
+   *  crossfade so the loop seam is inaudible. */
+  _loopBed(buffer, dest, xfade = 1.5) {
+    const period = Math.max(1, buffer.duration - xfade)
+    const spawn = when => {
+      if (!this.ctx) return
+      const src = this.ctx.createBufferSource()
+      src.buffer = buffer
+      const g = this.ctx.createGain()
+      g.gain.setValueAtTime(0.0001, when)
+      g.gain.linearRampToValueAtTime(1, when + xfade)
+      g.gain.setValueAtTime(1, when + period)
+      g.gain.linearRampToValueAtTime(0.0001, when + period + xfade)
+      src.connect(g).connect(dest)
+      src.start(when)
+      src.stop(when + period + xfade + 0.1)
+      const ms = (when + period - this.ctx.currentTime) * 1000 - 250
+      setTimeout(() => spawn(when + period), Math.max(50, ms))
+    }
+    spawn(this.ctx.currentTime + 0.05)
+  }
+
+  /** One-shot from a decoded buffer with per-play randomization. */
+  _playAmbOneShot(buf, { delay = 0, gain = 0.2, rate = 1, pan = 0, lowpass = 0 } = {}) {
+    const t0 = this.ctx.currentTime + delay
+    const src = this.ctx.createBufferSource()
+    src.buffer = buf
+    src.playbackRate.value = rate
+    const g = this.ctx.createGain()
+    g.gain.value = gain
+    let node = src
+    if (lowpass) {
+      const lp = this.ctx.createBiquadFilter()
+      lp.type = 'lowpass'
+      lp.frequency.value = lowpass
+      node.connect(lp); node = lp
+    }
+    if (this.ctx.createStereoPanner) {
+      const p = this.ctx.createStereoPanner()
+      p.pan.value = Math.max(-1, Math.min(1, pan))
+      node.connect(p); node = p
+    }
+    node.connect(g).connect(this._master)
+    src.start(t0)
+  }
+
+  /**
+   * Live ambience state from the game (10 Hz): wind knots, normalized ship
+   * speed, rudder, whether the sails are luffing, and whether land is close.
+   */
+  ambience(st) {
+    this._ambState = st
+    if (!this.ctx) return
+    const t = this.ctx.currentTime
+    if (this._windGain) {
+      const w = Math.min(0.55, Math.pow(Math.max(0, st.windKn) / 40, 1.3) * 0.55)
+      this._windGain.gain.setTargetAtTime(Math.max(0.0001, w), t, 1.5)
+    }
+    if (this._sailGain) {
+      this._sailGain.gain.setTargetAtTime(st.luffing ? 0.28 : 0.0001, t, 0.5)
+    }
+    if (this._oceanGain) {
+      this._oceanGain.gain.setTargetAtTime(0.34 + 0.14 * (st.speedFrac || 0), t, 1.5)
+    }
+  }
+
+  /** Hull and rigging creaks — the harder the ship works, the more it talks. */
+  _scheduleCreak() {
+    const s = this._ambState || {}
+    const activity = Math.min(1,
+      (s.speedFrac || 0) * 0.8 + Math.abs(s.rudder || 0) * 0.7 + (s.windKn || 0) / 60)
+    const delay = (14000 - activity * 9000) * (0.6 + Math.random() * 0.8)
+    this._creakTimer = setTimeout(() => {
+      if (this.ctx && document.visibilityState === 'visible' && this._creakBufs?.length) {
+        const buf = this._creakBufs[(Math.random() * this._creakBufs.length) | 0]
+        const a = Math.min(1,
+          ((this._ambState?.speedFrac || 0) * 0.8 + Math.abs(this._ambState?.rudder || 0) * 0.7))
+        this._playAmbOneShot(buf, {
+          gain: (0.09 + a * 0.15) * (0.8 + Math.random() * 0.4),
+          rate: 0.9 + Math.random() * 0.2,
+          pan: (Math.random() * 2 - 1) * 0.4,
+        })
+      }
+      this._scheduleCreak()
+    }, delay)
+  }
+
+  /** Gull cries — close and chatty near land, rare and distant at sea. */
   _scheduleGull() {
-    const delay = 12000 + Math.random() * 25000
+    const near = !!this._ambState?.nearLand
+    const delay = near ? 6000 + Math.random() * 12000 : 30000 + Math.random() * 40000
     this._gullTimer = setTimeout(() => {
-      if (this.ctx && document.visibilityState === 'visible') {
-        const base = 1100 + Math.random() * 500
-        const cries = 2 + Math.floor(Math.random() * 3)
-        for (let i = 0; i < cries; i++) {
-          this._tone({
-            type: 'sine',
-            freqStart: base * 1.25, freqEnd: base * 0.8,
-            dur: 0.22, gainPeak: 0.05, attack: 0.03,
-            delay: i * 0.35 + Math.random() * 0.1,
+      if (this.ctx && document.visibilityState === 'visible' && this._gullBufs?.length) {
+        const isNear = !!this._ambState?.nearLand
+        const n = isNear ? 1 + ((Math.random() * 2) | 0) : 1
+        for (let i = 0; i < n; i++) {
+          this._playAmbOneShot(this._gullBufs[(Math.random() * this._gullBufs.length) | 0], {
+            delay: i * (0.4 + Math.random() * 0.6),
+            gain: (isNear ? 0.15 : 0.06) * (0.8 + Math.random() * 0.4),
+            rate: 0.94 + Math.random() * 0.12,
+            pan: (Math.random() * 2 - 1) * 0.7,
+            lowpass: isNear ? 0 : 3200,
           })
         }
       }
