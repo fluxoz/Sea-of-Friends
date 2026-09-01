@@ -420,12 +420,15 @@ export class World {
 
     // Flat skirt below the detailed mesh so the horizon is water, not void.
     // Standard material → the scene fog fades the seam automatically.
+    // MUST sit below the deepest possible trough (Σ WAVE_PARAMS amp = 2.66,
+    // trough = -2.66): any shallower and aligned wave phases push the dark
+    // flat plane through the surface as a blotch.
     const skirt = new THREE.Mesh(
       new THREE.PlaneGeometry(WORLD_SIZE * 4, WORLD_SIZE * 4),
       new THREE.MeshBasicMaterial({ color: 0x00344f }),
     )
     skirt.rotation.x = -Math.PI / 2
-    skirt.position.y = -2.2
+    skirt.position.y = -4.5
     this._skirtMesh = skirt
     this.scene.add(skirt)
   }
