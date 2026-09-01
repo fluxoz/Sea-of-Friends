@@ -31,14 +31,20 @@ export const WORLD_HALF = WORLD_SIZE / 2
 // can never drift apart.  Mixed wavelengths (λ ≈ 570 → 30 units) give the
 // water both long swells and short chop.
 export const WAVE_PARAMS = [
-  { freq: 0.022, speed: 0.85, amp: 0.85, dirX:  1.0, dirZ:  0.7, hAmp: 4.0 },
-  { freq: 0.016, speed: 0.60, amp: 0.55, dirX: -0.6, dirZ:  1.0, hAmp: 4.0 },
-  { freq: 0.011, speed: 1.20, amp: 0.40, dirX:  0.8, dirZ: -0.5, hAmp: 4.0 },
-  { freq: 0.034, speed: 1.50, amp: 0.28, dirX: -0.5, dirZ: -0.9, hAmp: 2.5 },
-  { freq: 0.075, speed: 2.10, amp: 0.30, dirX:  0.9, dirZ:  0.3, hAmp: 1.5 },
-  { freq: 0.120, speed: 2.60, amp: 0.18, dirX: -0.3, dirZ:  0.9, hAmp: 0.9 },
-  { freq: 0.210, speed: 3.40, amp: 0.10, dirX:  0.7, dirZ: -0.7, hAmp: 0.5 },
+  { freq: 0.022, speed: 0.85, amp: 1.30, dirX:  1.0, dirZ:  0.7, hAmp: 5.0 },
+  { freq: 0.016, speed: 0.60, amp: 0.85, dirX: -0.6, dirZ:  1.0, hAmp: 5.0 },
+  { freq: 0.011, speed: 1.20, amp: 0.60, dirX:  0.8, dirZ: -0.5, hAmp: 4.5 },
+  { freq: 0.034, speed: 1.50, amp: 0.42, dirX: -0.5, dirZ: -0.9, hAmp: 3.0 },
+  { freq: 0.075, speed: 2.10, amp: 0.44, dirX:  0.9, dirZ:  0.3, hAmp: 1.8 },
+  { freq: 0.120, speed: 2.60, amp: 0.26, dirX: -0.3, dirZ:  0.9, hAmp: 1.1 },
+  { freq: 0.210, speed: 3.40, amp: 0.14, dirX:  0.7, dirZ: -0.7, hAmp: 0.6 },
 ]
+
+/** Deepest possible trough: every wave phase aligned downward. The horizon
+ *  skirt must sit below this or it pierces the surface as a dark blotch —
+ *  derived from the table so amplitude tuning can never strand it again. */
+const MAX_TROUGH = WAVE_PARAMS.reduce((s, w) => s + w.amp, 0)
+const SKIRT_Y = -(MAX_TROUGH + 2.5)
 
 /** Sum of all Gerstner displacements at parameter point (x, z).
  *  Uses dmath so the value is bit-identical on every peer (cannonball splash
@@ -178,8 +184,9 @@ const OCEAN_FRAG = /* glsl */ `
     vec3 V = normalize(cameraPosition - vWorldPos);
     vec3 S = normalize(uSunDir);
 
-    // Base colour – depth tint
-    float t = clamp((vH + 2.2) / 4.2, 0.0, 1.0);
+    // Base colour – depth tint, scaled to the full ±4 wave range so troughs
+    // shade smoothly instead of clamping to a flat dark patch
+    float t = clamp((vH + 4.0) / 8.0, 0.0, 1.0);
     vec3 col = mix(uDeepColor, uShallowColor, t);
 
     // Diffuse
@@ -188,7 +195,7 @@ const OCEAN_FRAG = /* glsl */ `
 
     // Fake subsurface scattering: crests glow green-blue looking toward the sun
     float sub = pow(clamp(dot(V, -S), 0.0, 1.0), 2.0)
-              * clamp(vH * 0.35 + 0.3, 0.0, 1.0);
+              * clamp(vH * 0.22 + 0.3, 0.0, 1.0);
     col += vec3(0.0, 0.17, 0.15) * sub;
 
     // Fresnel reflection of the sky at grazing angles
@@ -203,7 +210,7 @@ const OCEAN_FRAG = /* glsl */ `
     // Foam on crests, broken up with noise so it isn't a solid band
     float foamN = vnoise(vWorldPos.xz * 0.06 + uTime * 0.12)
                 + 0.5 * vnoise(vWorldPos.xz * 0.17 - uTime * 0.08);
-    float foam = smoothstep(1.15, 2.3, vH + (foamN - 0.75) * 0.8);
+    float foam = smoothstep(2.1, 3.6, vH + (foamN - 0.75) * 0.9);
     col = mix(col, vec3(0.92, 0.96, 1.0), foam * 0.6);
 
     // Manual fog matching the scene's FogExp2 (ShaderMaterial skips it)
@@ -420,15 +427,12 @@ export class World {
 
     // Flat skirt below the detailed mesh so the horizon is water, not void.
     // Standard material → the scene fog fades the seam automatically.
-    // MUST sit below the deepest possible trough (Σ WAVE_PARAMS amp = 2.66,
-    // trough = -2.66): any shallower and aligned wave phases push the dark
-    // flat plane through the surface as a blotch.
     const skirt = new THREE.Mesh(
       new THREE.PlaneGeometry(WORLD_SIZE * 4, WORLD_SIZE * 4),
       new THREE.MeshBasicMaterial({ color: 0x00344f }),
     )
     skirt.rotation.x = -Math.PI / 2
-    skirt.position.y = -4.5
+    skirt.position.y = SKIRT_Y
     this._skirtMesh = skirt
     this.scene.add(skirt)
   }
@@ -444,7 +448,7 @@ export class World {
         Math.round(x / grid) * grid, 0, Math.round(z / grid) * grid,
       )
     }
-    if (this._skirtMesh) this._skirtMesh.position.set(x, -2.2, z)
+    if (this._skirtMesh) this._skirtMesh.position.set(x, SKIRT_Y, z)
     if (this._skyGroup)  this._skyGroup.position.set(x, 0, z)
   }
 
@@ -783,7 +787,7 @@ export class World {
 
     for (let t = 0; t < count; t++) {
       const spot = this._findSpot(x, z, radius, heightAt, rng, 8,
-        h => h > 3.0 && h < radius)      // dry ground only — above any wave crest
+        h => h > 4.2 && h < radius)      // dry ground only — above any wave crest
       if (!spot) continue
       const opt = palmOptions.length
         ? palmOptions[Math.floor(rng() * palmOptions.length)]
