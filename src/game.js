@@ -163,15 +163,17 @@ export class Game {
     })
   }
 
-  /** Scene renders into this 4x-MSAA target; a copy pass puts it on screen. */
+  /** Scene renders into this MSAA target; a copy pass puts it on screen. */
   _setupMsaaTarget() {
     const ratio = this._renderer.getPixelRatio()
     const w = Math.floor(window.innerWidth * ratio)
     const h = Math.floor(window.innerHeight * ratio)
     // WebGL1 has no multisampled renderbuffers; samples is ignored there
-    // and the pipeline degrades gracefully to an aliased offscreen pass
+    // and the pipeline degrades gracefully to an aliased offscreen pass.
+    // At Retina density 2x MSAA is visually equal to 4x and halves the
+    // multisample fill cost.
     this._rt = new THREE.WebGLRenderTarget(w, h, {
-      samples: this._renderer.capabilities.isWebGL2 ? 4 : 0,
+      samples: this._renderer.capabilities.isWebGL2 ? (ratio >= 1.5 ? 2 : 4) : 0,
       depthBuffer: true,
     })
     // Tone mapping + sRGB happen while the scene is drawn into the target
@@ -720,6 +722,40 @@ export class Game {
   // Render loop (rAF — pure presentation)
   // ──────────────────────────────────────────────────────────────────────────
 
+  /**
+   * Adaptive render scale: when frames run slow, step the backing
+   * resolution down (never below 60%); when there is clear headroom, step
+   * back up. Applies to the canvas and the MSAA target together, so every
+   * machine settles where it holds 60 fps. HUD/text are DOM — always sharp.
+   */
+  _adaptQuality(now, frameMs) {
+    if (!(frameMs > 0) || frameMs > 250) { this._qAcc = 0; this._qN = 0; return }  // hidden tab / hitch
+    this._qAcc = (this._qAcc || 0) + frameMs
+    this._qN = (this._qN || 0) + 1
+    if (!this._qStamp) { this._qStamp = now; this._qWarmup = now + 6000 }
+    if (now - this._qStamp < 2000) return
+    const avg = this._qAcc / Math.max(1, this._qN)
+    this._qStamp = now; this._qAcc = 0; this._qN = 0
+    if (now < this._qWarmup) return
+    const cur = this._renderScale ?? 1
+    let next = cur
+    if (avg > 19 && cur > 0.6) next = Math.max(0.6, cur - 0.15)
+    else if (avg < 11 && cur < 1) next = Math.min(1, cur + 0.1)
+    if (next !== cur) {
+      this._renderScale = next
+      this._applyRenderScale()
+      console.info(`[render] adaptive scale ${Math.round(next * 100)}% (avg frame ${avg.toFixed(1)}ms)`)
+    }
+  }
+
+  _applyRenderScale() {
+    const scale = this._renderScale ?? 1
+    this._renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2) * scale)
+    this._renderer.setSize(window.innerWidth, window.innerHeight)
+    const r = this._renderer.getPixelRatio()
+    this._rt?.setSize(Math.floor(window.innerWidth * r), Math.floor(window.innerHeight * r))
+  }
+
   _render() {
     requestAnimationFrame(() => this._render())
     try {
@@ -737,8 +773,10 @@ export class Game {
 
   _renderFrame() {
     const now = performance.now()
-    const dtR = Math.min((now - (this._lastRender || now)) / 1000, 0.1)
+    const rawMs = now - (this._lastRender || now)
+    const dtR = Math.min(rawMs / 1000, 0.1)
     this._lastRender = now
+    this._adaptQuality(now, rawMs)
 
     // FPS counter (render-side only; the element is shown via settings)
     this._fpsFrames = (this._fpsFrames || 0) + 1
@@ -1725,10 +1763,8 @@ export class Game {
     this._camera.aspect = w / h
     this._camera.updateProjectionMatrix()
     // Refresh the pixel ratio too — dragging the window to a monitor with a
-    // different scale changes it, and a stale ratio distorts the buffer
-    this._renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-    this._renderer.setSize(w, h)
-    const ratio = this._renderer.getPixelRatio()
-    this._rt?.setSize(Math.floor(w * ratio), Math.floor(h * ratio))
+    // different scale changes it, and a stale ratio distorts the buffer.
+    // Routed through the adaptive scale so a resize keeps the current step.
+    this._applyRenderScale()
   }
 }

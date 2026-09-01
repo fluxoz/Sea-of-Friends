@@ -505,16 +505,42 @@ export class SFX {
       this._sailGain.connect(this._master)
       this._loopBed(sail, this._sailGain)
     }
+
+    // Hull wash: three real bow-water textures (calm lap / full rush / chop)
+    // blended by speed with a random-walk mix and per-layer pitch wander —
+    // the combination never repeats
+    const [calm, rush, chop] = await Promise.all(
+      ['hull_calm', 'hull_rush', 'hull_chop'].map(tryDec))
+    if (this.ctx && calm && rush) {
+      this._hullGain = this.ctx.createGain()
+      this._hullGain.gain.value = 0.0001
+      this._hullLP = this.ctx.createBiquadFilter()
+      this._hullLP.type = 'lowpass'
+      this._hullLP.frequency.value = 800
+      this._hullLP.connect(this._hullGain)
+      this._hullGain.connect(this._master)
+      this._hullLayers = [calm, rush, chop].filter(Boolean).map(buf => {
+        const g = this.ctx.createGain()
+        g.gain.value = 0.0001
+        g.connect(this._hullLP)
+        return { g, st: this._loopBed(buf, g), rate: 1 }
+      })
+      this._washMix = Math.random()
+    }
   }
 
   /** Loop a buffer forever, overlapping each pass with an equal-power
-   *  crossfade so the loop seam is inaudible. */
+   *  crossfade so the loop seam is inaudible. Returns a state object whose
+   *  `sources` set holds the live BufferSources (for playbackRate wander)
+   *  and whose `rate` is applied to each newly spawned pass. */
   _loopBed(buffer, dest, xfade = 1.5) {
+    const state = { sources: new Set(), rate: 1 }
     const period = Math.max(1, buffer.duration - xfade)
     const spawn = when => {
       if (!this.ctx) return
       const src = this.ctx.createBufferSource()
       src.buffer = buffer
+      src.playbackRate.value = state.rate
       const g = this.ctx.createGain()
       g.gain.setValueAtTime(0.0001, when)
       g.gain.linearRampToValueAtTime(1, when + xfade)
@@ -523,10 +549,13 @@ export class SFX {
       src.connect(g).connect(dest)
       src.start(when)
       src.stop(when + period + xfade + 0.1)
+      state.sources.add(src)
+      src.onended = () => state.sources.delete(src)
       const ms = (when + period - this.ctx.currentTime) * 1000 - 250
       setTimeout(() => spawn(when + period), Math.max(50, ms))
     }
     spawn(this.ctx.currentTime + 0.05)
+    return state
   }
 
   /** One-shot from a decoded buffer with per-play randomization. */
@@ -570,6 +599,30 @@ export class SFX {
     }
     if (this._oceanGain) {
       this._oceanGain.gain.setTargetAtTime(0.34 + 0.14 * (st.speedFrac || 0), t, 1.5)
+    }
+
+    // Hull wash — speed opens the gain and the filter; a slow random walk
+    // wanders the layer mix and each layer's pitch (±6%), so ten minutes at
+    // the same speed never plays the same water twice
+    if (this._hullLayers) {
+      const sp = Math.max(0, Math.min(1, st.speedFrac || 0))
+      this._washMix = Math.max(0, Math.min(1, this._washMix + (Math.random() - 0.5) * 0.08))
+      const m = this._washMix
+      this._hullGain.gain.setTargetAtTime(
+        Math.max(0.0001, Math.pow(sp, 1.25) * 0.5), t, 0.4)
+      this._hullLP.frequency.setTargetAtTime(500 + Math.pow(sp, 1.5) * 7500, t, 0.6)
+      const weights = [
+        (1 - sp * 0.7) * (0.55 + 0.45 * m),               // calm lap
+        sp * (0.7 + 0.3 * (1 - m)),                       // full rush
+        Math.max(0, sp - 0.45) * 1.6 * (0.4 + 0.6 * m),   // chop, high speed only
+      ]
+      this._hullLayers.forEach((L, i) => {
+        L.g.gain.setTargetAtTime(Math.max(0.0001, weights[i] ?? 0), t, 0.8)
+        L.rate = Math.max(0.92, Math.min(1.12,
+          L.rate + (Math.random() - 0.5) * 0.02 + (sp - 0.5) * 0.002))
+        L.st.rate = L.rate
+        for (const src of L.st.sources) src.playbackRate.setTargetAtTime(L.rate, t, 1)
+      })
     }
   }
 

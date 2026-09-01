@@ -397,7 +397,10 @@ wind "wind_zuni" by C-V (#565596), hull creaks "Slow wooden creaks x5" by
 peridactyloptrix (#218163) and "LargeWoodenShip" by PimFeijen (#195193),
 gulls "R01-71-Close up Seagull" by craigsmith (#479595) and
 "seagull call / squawk / cry" by mycompasstv (#738675), sail luffing
-"RAH_Flapping_Fabric_3" by _earthbound_ (#57280); menu scroll — "Paper Scroll 2" by
+"RAH_Flapping_Fabric_3" by _earthbound_ (#57280), hull wash "Sailing boat,
+bow wave (close perspective)" by Pfannkuchn (#360631), "G54-03-Light Bow
+Wave" by craigsmith (#438838), and "Choppy waves against a ship's bow" by
+tiennotg (#551436); menu scroll — "Paper Scroll 2" by
 OpenClipart via Wikimedia Commons (CC0); quill cursor — "Feather" icon by
 Lorc, game-icons.net (CC BY 3.0); fort loot chest/coins, ballista, farmhouse
 and other props from their respective packs in `assets/` — verify each
