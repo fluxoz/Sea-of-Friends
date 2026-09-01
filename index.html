@@ -61,6 +61,13 @@
     ::selection { background: rgba(232, 176, 64, 0.45); }
     :focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 2px; }
 
+    /* The whole UI is rem-sized; scale the root with the viewport so the
+       menu and HUD track the screen (≈16px at 1080p, smaller on laptops,
+       larger on 1440p/4K). Mobile keeps the browser default. */
+    @media (min-width: 900px) {
+      html { font-size: clamp(11.5px, 1.5vmin, 24px); }
+    }
+
     body {
       background: var(--navy-ground);
       overflow: hidden;
@@ -244,6 +251,8 @@
         rgba(6, 14, 26, 0.18) 0%, rgba(4, 10, 20, 0.62) 78%, rgba(2, 6, 14, 0.85) 100%);
       display: none; flex-direction: column;
       align-items: center; justify-content: center;
+      justify-content: safe center;
+      overflow-y: auto;
       color: #c8a96e; z-index: 900; gap: 1.1rem;
       text-align: center;
     }
@@ -282,9 +291,9 @@
     #join-panel {
       position: relative;
       display: flex; flex-direction: column; gap: 0.7rem;
-      width: min(480px, 94vw);
+      width: min(30rem, 94vw);
       aspect-ratio: 284 / 342;
-      padding: 92px 64px 88px;
+      padding: 5.75rem 4rem 5.5rem;
       align-items: center;
       justify-content: center;
       margin: 0.4rem 0;
@@ -301,7 +310,7 @@
       font-family: var(--font-flavor);
     }
     #name-input, #room-input {
-      width: 100%; max-width: 290px;
+      width: 100%; max-width: 18.1rem;
       padding: 0.5rem 1.2rem; font-size: 1.05rem;
       background: rgba(255, 250, 235, 0.35);
       border: none;
@@ -343,7 +352,7 @@
     #public-seas-btn { font-size: 0.85rem; padding: 0.45rem 1.35rem; }
     #public-seas-panel {
       position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-      width: min(370px, 92vw); max-height: 70vh;
+      width: min(23rem, 92vw); max-height: 70vh;
       padding: 1.1rem 1.2rem 1rem;
       z-index: 950;
       display: none; flex-direction: column; gap: 0.6rem;
@@ -415,7 +424,7 @@
     /* Feature chips: chunky navy pills */
     #features {
       display: flex; flex-wrap: wrap; justify-content: center;
-      gap: 0.5rem; max-width: 640px;
+      gap: 0.5rem; max-width: 40rem;
       margin-top: 0.4rem;
     }
     .feature-chip {
@@ -488,7 +497,7 @@
     /* ── Crew list ───────────────────────────────────────────── */
     #latency-list {
       position: absolute; top: 4rem; right: 1rem;
-      min-width: 172px;
+      min-width: 10.75rem;
       overflow: hidden;
       display: none;
       pointer-events: all;
@@ -552,7 +561,7 @@
       font-family: var(--font-display); letter-spacing: 0.07em;
       text-shadow: 0 1px 0 rgba(0,0,0,0.7), 0 2px 4px rgba(0,0,0,0.5);
     }
-    #speed-fill { width: 110px; height: 11px; }
+    #speed-fill { width: 6.9rem; height: 0.7rem; }
 
     /* ── Helm / rudder indicator ─────────────────────────────── */
     #rudder-row {
@@ -562,7 +571,7 @@
       font-family: var(--font-display);
       text-shadow: 0 1px 0 rgba(0,0,0,0.7);
     }
-    #rudder-bar { width: 130px; height: 10px; overflow: visible; }
+    #rudder-bar { width: 8.1rem; height: 0.65rem; overflow: visible; }
     #rudder-bar::after {
       content: ''; position: absolute; left: 50%; top: -2px; bottom: -2px;
       width: 2px; background: rgba(232, 201, 126, 0.55); border-radius: 1px;
@@ -589,7 +598,7 @@
       font-family: var(--font-display); letter-spacing: 0.09em;
       text-shadow: 0 1px 0 rgba(0,0,0,0.7), 0 2px 4px rgba(0,0,0,0.5);
     }
-    #hp-fill { width: 190px; height: 15px; }
+    #hp-fill { width: 11.9rem; height: 0.95rem; }
     #hp-text { min-width: 2em; text-align: left; font-size: 0.9rem; }
     #reload-row {
       display: flex; gap: 1.2rem;
@@ -609,7 +618,7 @@
       text-shadow: 0 1px 0 rgba(255,255,255,0.4);
       transition: filter 0.15s, box-shadow 0.15s;
     }
-    .reload-bar { width: 68px; height: 9px; }
+    .reload-bar { width: 4.25rem; height: 0.6rem; }
     .reload-fill { width: 100%; background: rgba(200, 169, 110, 0.6); }
     .reload-box.ready .reload-fill { background: linear-gradient(180deg, var(--gold-hi), var(--gold)); }
     .reload-box.ready .reload-key {
@@ -651,7 +660,7 @@
         0 0 0 8px var(--edge-dark),
         0 22px 60px rgba(0,0,0,0.75);
     }
-    #map-canvas { display: block; border-radius: 4px; }
+    #map-canvas { display: block; border-radius: 4px; width: min(38.75rem, 72vmin); height: auto; }
     #map-title {
       font-family: var(--font-title);
       font-size: 1.7rem; color: #e8c97e;
@@ -727,7 +736,7 @@
     /* ── Chat ────────────────────────────────────────────────── */
     #chat-box {
       position: absolute; bottom: 1rem; left: 1rem;
-      width: min(560px, calc(100vw - 2rem));
+      width: min(35rem, calc(100vw - 2rem));
       pointer-events: all;
     }
 
@@ -774,7 +783,7 @@
     .chat-tab-badge:empty { display: none; }
 
     #chat-messages {
-      height: 260px; overflow-y: auto;
+      height: 16.25rem; overflow-y: auto;
       background: var(--grain), linear-gradient(180deg, rgba(14, 26, 46, 0.82), rgba(9, 18, 33, 0.82));
       padding: 0.6rem 0.9rem;
       border-radius: 10px 10px 0 0;
@@ -886,7 +895,7 @@
       background: linear-gradient(180deg, #f8eed2, #eddcb2);
       color: var(--ink);
       padding: 6px 12px; border-radius: 12px;
-      font-size: 0.78rem; font-weight: 500; max-width: 220px;
+      font-size: 0.78rem; font-weight: 500; max-width: 13.75rem;
       text-align: center; word-break: break-word;
       z-index: 55; border: 2px solid var(--parch-edge);
       line-height: 1.4;
@@ -926,7 +935,7 @@
     /* ── Voice panel ─────────────────────────────────────────── */
     #voice-panel {
       position: absolute; top: 4rem; right: 1rem;
-      padding: 1rem 1.1rem 0.95rem; width: 240px;
+      padding: 1rem 1.1rem 0.95rem; width: 15rem;
       font-size: 0.82rem; pointer-events: all;
       display: none; flex-direction: column; gap: 0.65rem;
       z-index: 200;
@@ -946,7 +955,7 @@
     }
     #voice-device-select option { background: #0d1b33; }
     #voice-mute-btn.muted { --b-hi: var(--red-hi); --b-base: var(--red); --b-lo: var(--red-lo); --b-ext: var(--red-ext); }
-    #voice-level-bar { width: 100%; height: 8px; }
+    #voice-level-bar { width: 100%; height: 0.5rem; }
     #voice-level-fill {
       background: linear-gradient(180deg, #84c455, #619b37);
       width: 0%;
@@ -992,6 +1001,8 @@
     }
     #invite-panel.open { display: flex; }
     #invite-qr {
+      width: 13.75rem; height: 13.75rem;
+      image-rendering: pixelated;
       border-radius: 8px;
       border: 4px solid #f2ead2;
       box-shadow: 0 3px 0 rgba(24, 15, 5, 0.6), 0 6px 12px rgba(0,0,0,0.4);
@@ -1000,14 +1011,14 @@
       font-size: 0.78rem; color: #ead9ae; background: rgba(8, 15, 28, 0.75);
       border: 1.5px solid rgba(232, 201, 126, 0.3);
       padding: 0.35rem 0.75rem; border-radius: 8px; user-select: all;
-      max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      max-width: 17.5rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
     #invite-hint { font-size: 0.72rem; opacity: 0.6; font-style: italic; font-family: var(--font-flavor); }
 
     /* ── Settings panel ──────────────────────────────────────── */
     #settings-panel {
       position: absolute; top: 4rem; right: 1rem;
-      padding: 1rem 1.1rem 0.95rem; width: 240px;
+      padding: 1rem 1.1rem 0.95rem; width: 15rem;
       font-size: 0.82rem; pointer-events: all;
       display: none; flex-direction: column; gap: 0.7rem;
       z-index: 200;
@@ -1035,7 +1046,7 @@
     }
     #settings-panel select option { background: #0d1b33; }
     #settings-panel input[type="checkbox"] { accent-color: var(--gold); width: 1.05rem; height: 1.05rem; }
-    #settings-panel input[type="range"] { accent-color: var(--gold); width: 110px; }
+    #settings-panel input[type="range"] { accent-color: var(--gold); width: 6.9rem; }
 
     #fps-counter {
       position: absolute; top: 3.1rem; left: 1rem;
