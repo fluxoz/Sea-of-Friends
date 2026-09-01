@@ -506,11 +506,14 @@ export class SFX {
       this._loopBed(sail, this._sailGain)
     }
 
-    // Hull wash: three real bow-water textures (calm lap / full rush / chop)
-    // blended by speed with a random-walk mix and per-layer pitch wander —
-    // the combination never repeats
-    const [calm, rush, chop] = await Promise.all(
-      ['hull_calm', 'hull_rush', 'hull_chop'].map(tryDec))
+    // Hull wash: four real bow-water textures (calm lap / full rush / chop /
+    // white-water spray hiss) blended by speed with a random-walk mix and
+    // per-layer pitch wander — the combination never repeats. The spray
+    // layer bypasses the lowpass so the hiss stays crisp.
+    const [calm, rush, chop, spray] = await Promise.all(
+      ['hull_calm', 'hull_rush', 'hull_chop', 'hull_spray'].map(tryDec))
+    this._sprayBufs = (await Promise.all(
+      [1, 2, 3].map(i => tryDec(`spray_${i}`)))).filter(Boolean)
     if (this.ctx && calm && rush) {
       this._hullGain = this.ctx.createGain()
       this._hullGain.gain.value = 0.0001
@@ -519,14 +522,35 @@ export class SFX {
       this._hullLP.frequency.value = 800
       this._hullLP.connect(this._hullGain)
       this._hullGain.connect(this._master)
-      this._hullLayers = [calm, rush, chop].filter(Boolean).map(buf => {
+      const mk = (buf, dest) => {
         const g = this.ctx.createGain()
         g.gain.value = 0.0001
-        g.connect(this._hullLP)
+        g.connect(dest)
         return { g, st: this._loopBed(buf, g), rate: 1 }
-      })
+      }
+      this._hullLayers = [calm, rush, chop].filter(Boolean).map(b => mk(b, this._hullLP))
+      if (spray) this._hullLayers.push(mk(spray, this._hullGain))
       this._washMix = Math.random()
+      this._scheduleSpray()
     }
+  }
+
+  /** Bow spray bursts — foam thrown off the stem, only when driving hard. */
+  _scheduleSpray() {
+    const sp = this._ambState?.speedFrac || 0
+    const delay = (3800 - sp * 2400) * (0.7 + Math.random() * 0.6)
+    this._sprayTimer = setTimeout(() => {
+      const s = this._ambState?.speedFrac || 0
+      if (this.ctx && document.visibilityState === 'visible'
+          && s > 0.45 && this._sprayBufs?.length) {
+        this._playAmbOneShot(this._sprayBufs[(Math.random() * this._sprayBufs.length) | 0], {
+          gain: (0.1 + (s - 0.45) * 0.45) * (0.75 + Math.random() * 0.5),
+          rate: 0.9 + Math.random() * 0.25,
+          pan: (Math.random() * 2 - 1) * 0.3,
+        })
+      }
+      this._scheduleSpray()
+    }, delay)
   }
 
   /** Loop a buffer forever, overlapping each pass with an equal-power
@@ -609,12 +633,13 @@ export class SFX {
       this._washMix = Math.max(0, Math.min(1, this._washMix + (Math.random() - 0.5) * 0.08))
       const m = this._washMix
       this._hullGain.gain.setTargetAtTime(
-        Math.max(0.0001, Math.pow(sp, 1.25) * 0.5), t, 0.4)
-      this._hullLP.frequency.setTargetAtTime(500 + Math.pow(sp, 1.5) * 7500, t, 0.6)
+        Math.max(0.0001, Math.pow(sp, 1.2) * 0.55), t, 0.4)
+      this._hullLP.frequency.setTargetAtTime(600 + Math.pow(sp, 1.4) * 9000, t, 0.6)
       const weights = [
-        (1 - sp * 0.7) * (0.55 + 0.45 * m),               // calm lap
-        sp * (0.7 + 0.3 * (1 - m)),                       // full rush
-        Math.max(0, sp - 0.45) * 1.6 * (0.4 + 0.6 * m),   // chop, high speed only
+        Math.pow(1 - sp, 1.6) * (0.5 + 0.5 * m),          // calm lap — near-stopped only
+        Math.pow(sp, 0.9) * (0.75 + 0.25 * (1 - m)),      // full bow rush carries the mid
+        Math.max(0, sp - 0.4) * 1.5 * (0.4 + 0.6 * m),    // chop slap
+        Math.pow(sp, 1.8) * (0.8 + 0.4 * m) * 1.15,       // white-water spray hiss on top
       ]
       this._hullLayers.forEach((L, i) => {
         L.g.gain.setTargetAtTime(Math.max(0.0001, weights[i] ?? 0), t, 0.8)

@@ -400,7 +400,9 @@ gulls "R01-71-Close up Seagull" by craigsmith (#479595) and
 "RAH_Flapping_Fabric_3" by _earthbound_ (#57280), hull wash "Sailing boat,
 bow wave (close perspective)" by Pfannkuchn (#360631), "G54-03-Light Bow
 Wave" by craigsmith (#438838), and "Choppy waves against a ship's bow" by
-tiennotg (#551436); menu scroll — "Paper Scroll 2" by
+tiennotg (#551436), spray "Sailboat-wake_hissing-light_breeze" by
+4billboards (#512126) and "Sailboat Bow" by myLoop (#852108); menu
+scroll — "Paper Scroll 2" by
 OpenClipart via Wikimedia Commons (CC0); quill cursor — "Feather" icon by
 Lorc, game-icons.net (CC BY 3.0); fort loot chest/coins, ballista, farmhouse
 and other props from their respective packs in `assets/` — verify each
