@@ -12,7 +12,7 @@
  * Model source: Kenney Pirate Kit (CC0) – https://kenney.nl/assets/pirate-kit
  */
 import * as THREE from 'three'
-import { WORLD_HALF, waveHeight } from './world.js'
+import { WORLD_HALF, waveHeight, waveHeightFast } from './world.js'
 import { cloneAsset, hasAsset }  from './assets.js'
 import { dsin, dcos, wrapAngle, PI, HALF_PI } from './dmath.js'
 
@@ -463,11 +463,15 @@ export class Ship {
     const x = this.position.x, z = this.position.z
     const L = this.halfLength * 1.25
     const B = this.halfWidth * 1.6 + 1.5
-    const hBow   = waveHeight(x + sy * L, z + cy * L, simTime)
-    const hStern = waveHeight(x - sy * L, z - cy * L, simTime)
-    const hStbd  = waveHeight(x + cy * B, z - sy * B, simTime)
-    const hPort  = waveHeight(x - cy * B, z + sy * B, simTime)
-    const mean = (hBow + hStern + hStbd + hPort) * 0.25
+    // One full (inverted) sample where absolute height must match the drawn
+    // surface; tilt targets are DIFFERENCES, so the cheap un-inverted field
+    // serves — its horizontal shift cancels across the pair (4x cheaper,
+    // and rollback catch-up bursts stay light on slow machines)
+    const mean   = waveHeight(x, z, simTime)
+    const hBow   = waveHeightFast(x + sy * L, z + cy * L, simTime)
+    const hStern = waveHeightFast(x - sy * L, z - cy * L, simTime)
+    const hStbd  = waveHeightFast(x + cy * B, z - sy * B, simTime)
+    const hPort  = waveHeightFast(x - cy * B, z + sy * B, simTime)
     this._waveY = mean
     if (this.sinking) return
 
