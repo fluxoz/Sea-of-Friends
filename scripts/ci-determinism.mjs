@@ -48,7 +48,9 @@ const room = 'ci-' + Date.now()
 const RELAYS = encodeURIComponent(`ws://localhost:${TRACKER_PORT}`)
 
 const mk = async name => {
-  const page = await (await browser.newContext({ viewport: { width: 1024, height: 640 } })).newPage()
+  // Small viewport: SwiftShader software-rasterizes every pixel on the
+  // 2-vCPU runner, and render cost was starving the sim into stall-ejects
+  const page = await (await browser.newContext({ viewport: { width: 480, height: 320 } })).newPage()
   page.on('pageerror', e => failures.push(`pageerror[${name}]: ${e.message.slice(0, 200)}`))
   page.on('console', m => {
     if (m.type() === 'error' && !/tracker|WebSocket|wss|ERR_|404/i.test(m.text())) {

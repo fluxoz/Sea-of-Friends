@@ -63,6 +63,17 @@ function displaceCPU(x, z, t) {
 }
 
 /**
+ * Cheap single-pass wave height (no horizontal-displacement inversion).
+ * ~4x cheaper than waveHeight; the field is horizontally shifted by up to
+ * the chop amplitude, so use it only for DIFFERENTIAL quantities (slopes,
+ * tilt targets) where the shift cancels — never for an absolute height that
+ * must match the drawn surface.
+ */
+export function waveHeightFast(x, z, t) {
+  return displaceCPU(x, z, t).dy
+}
+
+/**
  * Water-surface height at world (x, z).  Gerstner waves displace horizontally,
  * so we invert the mapping with a few fixed-point iterations (the horizontal
  * displacement is a contraction, so this converges fast).
