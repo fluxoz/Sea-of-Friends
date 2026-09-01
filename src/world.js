@@ -180,17 +180,13 @@ const OCEAN_FRAG = /* glsl */ `
   varying vec3  vNormal;
   varying vec3  vWorldPos;
 
-  // Cheap 2-D value noise for organic ripple + foam detail (no axis-aligned
-  // sine patterns — those read as a giant grid on open water)
-  float hash21(vec2 p) {
-    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
-  }
+  // Value noise baked into a repeating texture: one bilinear (mipmapped)
+  // tap replaces 4 hashes + 4 sins per call — the ocean makes ~11 calls per
+  // fragment, so this is the single hottest path in the frame. The mips
+  // also calm far-field shimmer that the procedural version aliased.
+  uniform sampler2D uNoise;
   float vnoise(vec2 p) {
-    vec2 i = floor(p);
-    vec2 f = fract(p);
-    vec2 u = f * f * (3.0 - 2.0 * f);
-    return mix(mix(hash21(i),                 hash21(i + vec2(1.0, 0.0)), u.x),
-               mix(hash21(i + vec2(0.0, 1.0)), hash21(i + vec2(1.0, 1.0)), u.x), u.y);
+    return texture2D(uNoise, p * (1.0 / 64.0)).r;
   }
 
   void main() {
@@ -444,6 +440,38 @@ export class World {
   // Ocean
   // ──────────────────────────────────────────────────────────────────────────
 
+  /** Bake smoothed value noise into a tiling texture (visual-only — each
+   *  client may differ; the sim never reads it). One bilinear tap replaces
+   *  4 hashes + 4 sins per vnoise() call in the ocean fragment shader. */
+  _makeNoiseTexture() {
+    const NSZ = 256, PER = 64
+    const lat = new Float32Array(PER * PER)
+    for (let i = 0; i < lat.length; i++) lat[i] = Math.random()
+    const h = (ix, iz) =>
+      lat[((iz % PER + PER) % PER) * PER + ((ix % PER + PER) % PER)]
+    const data = new Uint8Array(NSZ * NSZ * 4)
+    for (let ty = 0; ty < NSZ; ty++) {
+      for (let tx = 0; tx < NSZ; tx++) {
+        const px = tx * 0.25, py = ty * 0.25
+        const ix = Math.floor(px), iy = Math.floor(py)
+        const fx = px - ix, fy = py - iy
+        const ux = fx * fx * (3 - 2 * fx), uy = fy * fy * (3 - 2 * fy)
+        const v = (h(ix, iy) * (1 - ux) + h(ix + 1, iy) * ux) * (1 - uy)
+                + (h(ix, iy + 1) * (1 - ux) + h(ix + 1, iy + 1) * ux) * uy
+        const o = (ty * NSZ + tx) * 4
+        data[o] = data[o + 1] = data[o + 2] = v * 255
+        data[o + 3] = 255
+      }
+    }
+    const tex = new THREE.DataTexture(data, NSZ, NSZ)
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping
+    tex.minFilter = THREE.LinearMipmapLinearFilter
+    tex.magFilter = THREE.LinearFilter
+    tex.generateMipmaps = true
+    tex.needsUpdate = true
+    return tex
+  }
+
   _buildOcean() {
     // Dense mesh that follows the player (set via setFocus); waves are
     // computed from world position so recentring is invisible.
@@ -471,6 +499,7 @@ export class World {
         uDynMap:      { value: null },
         uDynCenter:   { value: new THREE.Vector2(0, 0) },
         uDynSize:     { value: 360 },
+        uNoise:       { value: this._makeNoiseTexture() },
       },
     })
 
@@ -584,7 +613,7 @@ export class World {
     const RES = 512
     this._flRes  = RES
     this._flSize = 360                    // world units covered
-    this._flDT   = 1 / 60                 // fixed substep
+    this._flDT   = 1 / 30                 // fixed substep (halves pass count)
     const dx = this._flSize / RES
     const c  = 9                          // wake wave speed (world u/s)
     this._flC2 = (c * this._flDT / dx) ** 2   // CFL ≈ 0.21 — comfortably stable
@@ -604,7 +633,7 @@ export class World {
     this._flStepMat = new THREE.ShaderMaterial({
       uniforms: {
         uField: { value: null }, uShift: { value: new THREE.Vector2() },
-        uC2: { value: this._flC2 }, uDamp: { value: 0.996 },
+        uC2: { value: this._flC2 }, uDamp: { value: 0.992 },
         uTexel: { value: 1 / RES },
       },
       vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
@@ -688,9 +717,9 @@ export class World {
     const shiftZ = (cz - this._flCenter.y) / S
     this._flCenter.set(cx, cz)
 
-    this._flAccum = Math.min(this._flAccum + Math.min(dtR, 0.1), 4 * this._flDT)
+    this._flAccum = Math.min(this._flAccum + Math.min(dtR, 0.1), 3 * this._flDT)
     let steps = 0
-    while (this._flAccum >= this._flDT && steps < 3) { this._flAccum -= this._flDT; steps++ }
+    while (this._flAccum >= this._flDT && steps < 2) { this._flAccum -= this._flDT; steps++ }
     if (!steps && (shiftX || shiftZ)) steps = 1   // keep the window glued on
 
     const oldTarget = renderer.getRenderTarget()
@@ -735,6 +764,12 @@ export class World {
   /** Advance the wake texture: fade, recentre on (fx, fz), stamp the queue. */
   updateWake(renderer, fx, fz, dt) {
     if (!this._wakeRTs) return
+    // ~30 Hz is plenty for a slow-fading foam field — stamps queue up
+    // between runs and the decay uses the real accumulated dt
+    this._wakeAccum = (this._wakeAccum || 0) + dt
+    if (this._wakeAccum < 1 / 32) return
+    dt = this._wakeAccum
+    this._wakeAccum = 0
     const S = this._wakeSize
     const texel = S / this._wakeRes
     const cx = Math.round(fx / texel) * texel
