@@ -388,7 +388,9 @@ and rare **pirate camps** on settled isles, a beached sailing boat on their
 shores, and coconut & banana trees mixed into the island flora.
 **Check each pack's licence before publishing this repo's `public/` folder.**
 
-**Attributions** (found assets): cannon recordings — "Cannon Shot" by
+**Attributions** (found assets): 3-D models & particle sprites — Kenney.nl
+CC0 kits (Pirate, Nature, Watercraft, Fantasy Town, Survival, Particle
+Pack); cannon recordings — "Cannon Shot" by
 qubodup (from a US Government video, CC0), "Tank fire Mixed" by GaryQ,
 "Cannon2" by Isaac200000, and "cannon" by Kneeling,
 all CC0 via freesound.org; ambience recordings (all CC0 via freesound.org) —
