@@ -19,21 +19,30 @@ function watchForNewVersion() {
     try {
       const r = await fetch('/version.json', { cache: 'no-store' })
       if (!r.ok) return
-      const { version } = await r.json()
-      if (version && version !== APP_VERSION && !document.getElementById('update-banner')) {
-        const el = document.createElement('div')
-        el.id = 'update-banner'
-        el.style.cssText = 'position:fixed;top:0;left:50%;transform:translateX(-50%);z-index:500;'
-          + 'background:linear-gradient(180deg,#f8eed2,#ddc795);color:#4a3018;border:2px solid #6b4a26;'
-          + 'border-top:none;border-radius:0 0 12px 12px;padding:0.5rem 1.2rem;font-size:0.85rem;'
-          + "font-family:'Fredoka','Trebuchet MS',sans-serif;font-weight:600;"
-          + 'box-shadow:0 3px 0 rgba(42,26,10,0.45),0 8px 18px rgba(0,0,0,0.45);'
-          + 'cursor:pointer;pointer-events:all'
-        el.textContent = `⚓ A new version has shipped (${version}) — click to refresh and rejoin the fleet`
-        el.addEventListener('click', () => location.reload())
-        document.body.appendChild(el)
-        addSystemMessage(`⚓ New version ${version} is live — refresh to sail with the fleet (you're on ${APP_VERSION})`)
-      }
+      const { version, builtAt } = await r.json()
+      if (document.getElementById('update-banner')) return
+      // Protocol bump: the fleet has sailed on without you. Render-only
+      // deploy (same version, newer build stamp): fresh paint, no rush.
+      const protocol = version && version !== APP_VERSION
+      const freshBuild = !protocol && builtAt
+        && typeof __BUILT_AT__ !== 'undefined' && builtAt !== __BUILT_AT__
+      if (!protocol && !freshBuild) return
+      const el = document.createElement('div')
+      el.id = 'update-banner'
+      el.style.cssText = 'position:fixed;top:0;left:50%;transform:translateX(-50%);z-index:500;'
+        + 'background:linear-gradient(180deg,#f8eed2,#ddc795);color:#4a3018;border:2px solid #6b4a26;'
+        + 'border-top:none;border-radius:0 0 12px 12px;padding:0.5rem 1.2rem;font-size:0.85rem;'
+        + "font-family:'Fredoka','Trebuchet MS',sans-serif;font-weight:600;"
+        + 'box-shadow:0 3px 0 rgba(42,26,10,0.45),0 8px 18px rgba(0,0,0,0.45);'
+        + 'cursor:pointer;pointer-events:all'
+      el.textContent = protocol
+        ? `⚓ A new version has shipped (${version}) — click to refresh and rejoin the fleet`
+        : '🎨 A fresh coat of paint has shipped — click to refresh (same sea, same crew, no rush)'
+      el.addEventListener('click', () => location.reload())
+      document.body.appendChild(el)
+      addSystemMessage(protocol
+        ? `⚓ New version ${version} is live — refresh to sail with the fleet (you're on ${APP_VERSION})`
+        : '🎨 A fresh build is live — refresh whenever convenient to pick it up')
     } catch { /* offline or dev — try again later */ }
   }
   check()
