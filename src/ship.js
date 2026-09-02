@@ -221,6 +221,15 @@ export class Ship {
       if (child.isMesh && child.name === 'sail-b' && !this._mainSail) {
         this._mainSail = child
       }
+      // Every piece of canvas braces, billows, and luffs (render-only)
+      if (child.isMesh && child.name.startsWith('sail')) {
+        (this._sailMeshes ?? (this._sailMeshes = [])).push({
+          mesh: child,
+          baseY: child.rotation.y,
+          baseX: child.rotation.x,
+          phase: Math.random() * Math.PI * 2,
+        })
+      }
       // Class livery: tint the canvas (per-clone material, texture preserved)
       if (this._sailTint && child.isMesh && child.name.startsWith('sail')) {
         child.material = child.material.clone()
@@ -649,9 +658,32 @@ export class Ship {
     if (this._flag) {
       this._flag.rotation.y = Math.sin(t * 2.5) * 0.3 + 0.3
     }
-    if (this._mainSail) {
-      const belly = Math.abs(this.speed) > 0.5 ? Math.sin(t * 1.2) * 0.06 : 0
-      this._mainSail.rotation.y = belly
+    if (this._sailMeshes?.length) {
+      // Brace the yards toward the apparent wind (rigging clamps the swing);
+      // luffing canvas shakes violently, drawing canvas billows gently
+      const rel = this._lastRel ?? 0
+      const luffing = this.sail > 0.05 && (this._inIrons || (this._eff ?? 1) <= 0.6)
+      const trimTarget = luffing ? 0 : Math.max(-0.85, Math.min(0.85, rel))
+      const curTrim = this._trim ?? 0
+      this._trim = curTrim + (trimTarget - curTrim) * Math.min(1, dtRender * 2.2)
+      const drawFrac = this.sail * Math.min(1, (this._windSpd ?? 19) / 24)
+      for (const s of this._sailMeshes) {
+        let ry = s.baseY + this._trim
+        let rx = s.baseX
+        if (luffing) {
+          // Flogging canvas: fast, ragged, per-sail phase
+          ry += Math.sin(t * 11 + s.phase) * 0.11
+              + Math.sin(t * 17.3 + s.phase * 2.1) * 0.055
+          rx += Math.sin(t * 13.7 + s.phase * 1.3) * 0.07
+        } else {
+          // Drawing nicely: a full-bellied lean plus a slow breathing ripple
+          rx += drawFrac * (this._eff ?? 1) * 0.1
+              + Math.sin(t * 1.2 + s.phase) * 0.02 * drawFrac
+          ry += Math.sin(t * 0.9 + s.phase) * 0.015 * drawFrac
+        }
+        s.mesh.rotation.y = ry
+        s.mesh.rotation.x = rx
+      }
     }
 
     // Cannon recoil + elevation
