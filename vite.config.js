@@ -46,6 +46,10 @@ const turnCredsMock = {
   },
 }
 
+// One stamp shared by the bundle define and version.json, so a running
+// client can tell "same version, newer build" and suggest a gentle refresh
+const BUILT_AT = new Date().toISOString()
+
 const versionFile = {
   name: 'version-file',
   configureServer(server) {
@@ -58,7 +62,7 @@ const versionFile = {
     this.emitFile({
       type: 'asset',
       fileName: 'version.json',
-      source: JSON.stringify({ version: pkg.version, builtAt: new Date().toISOString() }),
+      source: JSON.stringify({ version: pkg.version, builtAt: BUILT_AT }),
     })
   },
 }
@@ -68,6 +72,7 @@ export default defineConfig({
   publicDir: 'public',
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
+    __BUILT_AT__: JSON.stringify(BUILT_AT),
   },
   build: {
     outDir: 'dist',
