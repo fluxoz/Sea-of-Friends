@@ -151,7 +151,7 @@ export class Forts {
    */
   simStep(dt, players, rng, onFire) {
     const events = []
-    const alivePlayers = players.filter(p => p.alive)
+    const alivePlayers = players.filter(p => p.alive && !p.docked)
 
     for (const fort of this.forts) {
       if (fort.hp <= 0) {

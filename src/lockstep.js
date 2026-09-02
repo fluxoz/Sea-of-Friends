@@ -528,7 +528,13 @@ export class Lockstep {
       if (!this._activeAt(r, t)) continue
       const packet = this.inputs.get(pid).get(t)
       inputs.set(pid, packet)
-      // Roster commands are honoured only from the current orderer's stream
+      // Roster commands are honoured only from the current orderer's stream;
+      // self-scoped store buys ({b, w:self}) are honoured from any peer
+      if (pid !== orderer && Array.isArray(packet.c)) {
+        for (const cmd of packet.c) {
+          if (cmd.b !== undefined && cmd.w === pid) cmds.push(cmd)
+        }
+      }
       if (pid === orderer && Array.isArray(packet.c)) {
         for (const cmd of packet.c) {
           cmds.push(cmd)
@@ -602,8 +608,18 @@ export class Lockstep {
     }
   }
 
+  /** Queue a command to ride this peer's next input packet — it lands on the
+   *  confirmed timeline at the same tick for everyone (e.g. store buys). */
+  queueCmd(cmd) {
+    (this._localCmds ?? (this._localCmds = [])).push(cmd)
+  }
+
   _takeCmds(_tick) {
     const cmds = []
+    if (this._localCmds?.length) {
+      cmds.push(...this._localCmds)
+      this._localCmds = []
+    }
     if (this._orderer() === this.selfId) {
       for (const join of this._pendingJoins) {
         if (!this._sentCmdsFor.has(join.pid)) {

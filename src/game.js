@@ -22,6 +22,7 @@ import { SFX } from './sfx.js'
 import { AIFleet, aiDisplayName } from './ai.js'
 import { Powerups, POWERUP_TYPES } from './powerups.js'
 import { Forts } from './forts.js'
+import { Ports, STORE_ITEMS, DOCK_RADIUS } from './ports.js'
 import { WorldMap } from './map.js'
 import { Sim, FIXED_DT, TICK_MS } from './sim.js'
 import { APP_VERSION } from './network.js'
@@ -128,6 +129,7 @@ export class Game {
     }
     this.aiFleet   = new AIFleet(this._scene, this.world, this._combat)
     this.forts     = new Forts(this._scene, this.world, this._combat)
+    this.ports     = new Ports(this._scene, this.world)
     this.powerups  = new Powerups(this._scene, this.world)
 
     // Menu backdrop world; becomes the real world if we found the room
@@ -329,7 +331,7 @@ export class Game {
       {
         scene: this._scene, world: this.world, combat: this._combat,
         aiFleet: this.aiFleet, forts: this.forts, powerups: this.powerups,
-        sfx: this._sfx,
+        ports: this.ports, sfx: this._sfx,
       },
       {
         selfId: network.selfId,
@@ -383,7 +385,8 @@ export class Game {
       executeTick: (t, inputs, cmds) => {
         this._sfx.beginTick(t)
         try {
-          this.sim.step(t, inputs, cmds.map(c => c.j ? { j: c.j, c: c.c } : c.p ? { p: c.p } : { d: c.d }))
+          this.sim.step(t, inputs, cmds.map(c =>
+            c.j ? { j: c.j, c: c.c } : c.p ? { p: c.p } : c.d ? { d: c.d, k: c.k } : c))
         } finally {
           this._sfx.endTick()
         }
@@ -514,7 +517,7 @@ export class Game {
       {
         scene: this._scene, world: this.world, combat: this._combat,
         aiFleet: this.aiFleet, forts: this.forts, powerups: this.powerups,
-        sfx: this._sfx,
+        ports: this.ports, sfx: this._sfx,
       },
       {
         selfId: '·replay·',
@@ -1375,6 +1378,18 @@ export class Game {
     const hpText = document.getElementById('hp-text')
     if (hpText) hpText.textContent = `${Math.max(0, Math.round(me.hp))}`
 
+    // Port store: opens while moored, closes when we cast off
+    const portPanel = document.getElementById('port-panel')
+    if (portPanel) {
+      const docked = lp.dockPort >= 0
+      if (docked !== this._wasDocked) {
+        this._wasDocked = docked
+        portPanel.classList.toggle('open', docked)
+        if (docked) this._buildPortRows()
+      }
+      if (docked) this._updatePortRows(lp, me)
+    }
+
     // Active buffs (top-left stack, under the DHT dot)
     const buffList = document.getElementById('buff-list')
     if (buffList) {
@@ -1675,6 +1690,60 @@ export class Game {
   /** Cast (and broadcast) a vote to kick a captain. Majority = strict >50%
    *  of the live crew. The tally is out-of-band; the KICK itself rides the
    *  deterministic orderer machinery in lockstep.kick(). */
+  // ──────────────────────────────────────────────────────────────────────────
+  // Port store (render-side; purchases ride lockstep cmds)
+  // ──────────────────────────────────────────────────────────────────────────
+
+  _buildPortRows() {
+    const port = this.ports.list[this.localPlayer?.dockPort]
+    const nameEl = document.getElementById('port-name')
+    if (nameEl) nameEl.textContent = port?.name ?? 'Port'
+    const wrap = document.getElementById('port-items')
+    if (!wrap || wrap.childElementCount) return
+    STORE_ITEMS.forEach((item, idx) => {
+      const row = document.createElement('div')
+      row.className = 'port-row'
+      const info = document.createElement('div')
+      const nm = document.createElement('div')
+      nm.className = 'port-item-name'
+      nm.textContent = `${item.icon} ${item.name}`
+      const ds = document.createElement('div')
+      ds.className = 'port-item-desc'
+      ds.textContent = item.desc
+      info.appendChild(nm)
+      info.appendChild(ds)
+      const btn = document.createElement('button')
+      btn.className = 'btn3d btn-gold btn-sm port-buy'
+      btn.addEventListener('click', () => {
+        this.lockstep?.queueCmd({ b: idx, w: this.network.selfId })
+      })
+      row.appendChild(info)
+      row.appendChild(btn)
+      row._btn = btn
+      wrap.appendChild(row)
+    })
+  }
+
+  _updatePortRows(lp, me) {
+    const goldEl = document.getElementById('port-gold')
+    if (goldEl) goldEl.textContent = `🪙 ${lp.gold}`
+    document.querySelectorAll('#port-items .port-row').forEach((row, idx) => {
+      const item = STORE_ITEMS[idx]
+      if (!item || !row._btn) return
+      let cost = item.price
+      let maxed = false
+      if (item.key === 'repair') {
+        const missing = Math.max(0, Math.ceil(me.maxHp - me.hp))
+        cost = Math.ceil(missing * item.price)
+        maxed = missing < 1
+      } else if (item.key === 'plank') maxed = lp.upPlank >= 2
+      else if (item.key === 'cannon') maxed = lp.upCannon >= 2
+      else if (item.key === 'sails') maxed = lp.upSails >= 1
+      row._btn.textContent = maxed ? (item.key === 'repair' ? 'Sound' : 'Owned') : `${cost} 🪙`
+      row._btn.disabled = maxed || lp.gold < cost
+    })
+  }
+
   castVote(targetPid) {
     if (!this._playing || targetPid === this.network.selfId) return
     if (!this.sim?.players.has(targetPid)) return

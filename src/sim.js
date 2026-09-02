@@ -18,6 +18,7 @@ import { waveHeight, getWind } from './world.js'
 import { BALL_DAMAGE, BALL_SPEED, BALL_GRAVITY, RELOAD_TIME, MAX_ELEVATION, MIN_ELEVATION, MAX_TRAVERSE, BOW_TRAVERSE } from './combat.js'
 import { aiDisplayName } from './ai.js'
 import { POWERUP_TYPES } from './powerups.js'
+import { STORE_ITEMS } from './ports.js'
 import { DRng, HashAcc, dhypot, dcos, dsin, wrapAngle, hash32, PI } from './dmath.js'
 
 export const TICK_RATE = 20
@@ -63,6 +64,7 @@ export class Sim {
     this._windOff  = (this.seed % 100000)
     this.world.buildIslands(this.seed)
     this.forts.generate(this.seed)
+    this.ports?.generate(this.seed, this.forts.forts)
     this.powerups.clearAll()
     this.aiFleet.init(this.rng)
     this.players.clear()
@@ -100,6 +102,7 @@ export class Sim {
       rudder: 0, heldHeading: null,
       respawnT: -1, invulnT: 0, lastAttacker: null, lastThud: -10,
       parked: false,
+      dockPort: -1, upPlank: 0, upCannon: 0, upSails: 0, kegShots: 0,
     })
     this.hooks.feed(`⚓ ${this.hooks.resolveName(pid)} joined the crew`)
   }
@@ -156,6 +159,7 @@ export class Sim {
       if (cmd.j) this.addPlayer(cmd.j, cmd.c)
       if (cmd.p) this.parkPlayer(cmd.p)
       if (cmd.d) this.removePlayer(cmd.d)
+      if (cmd.b !== undefined && cmd.w) this._buyItem(cmd.w, cmd.b)
     }
 
     const listener = this._listenerPos()
@@ -227,6 +231,32 @@ export class Sim {
       this._collideIslands(p)
       ship.updateBuoyancy(FIXED_DT, simTime)
 
+      // Port mooring: glide into an anchorage slow with sails struck and
+      // yer docked (guns cold, ram-proof); raise canvas to cast off
+      if (this.ports) {
+        if (p.dockPort < 0) {
+          if (Math.abs(ship.speed) < 4 && ship.sail < 0.06) {
+            const near = this.ports.nearest(ship.position.x, ship.position.z)
+            if (near >= 0) {
+              p.dockPort = near
+              const port = this.ports.list[near]
+              if (pid === this.hooks.selfId) {
+                this.hooks.feed(`⚓ Moored at ${port.name} — the quartermaster awaits`)
+              }
+            }
+          }
+        } else {
+          const port = this.ports.list[p.dockPort]
+          if (!port || ship.sail > 0.12
+              || dhypot(ship.position.x - port.x, ship.position.z - port.z) > 32) {
+            if (pid === this.hooks.selfId && port) {
+              this.hooks.feed(`⛵ Cast off from ${port.name} — fair winds!`)
+            }
+            p.dockPort = -1
+          }
+        }
+      }
+
       p.reloadP    = Math.max(0, p.reloadP - FIXED_DT)
       p.reloadS    = Math.max(0, p.reloadS - FIXED_DT)
       p.reloadB    = Math.max(0, p.reloadB - FIXED_DT)
@@ -246,7 +276,11 @@ export class Sim {
 
     const playerViews = sorted.map(pid => {
       const p = this.players.get(pid)
-      return { id: pid, ship: p.ship, pos: p.ship.position, alive: !p.ship.sinking && p.ship.hp > 0 }
+      return {
+        id: pid, ship: p.ship, pos: p.ship.position,
+        alive: !p.ship.sinking && p.ship.hp > 0,
+        docked: p.dockPort >= 0,   // ghosts and forts leave moored ships be
+      }
     })
 
     // ── AI fleet ───────────────────────────────────────────────────────────
@@ -291,7 +325,8 @@ export class Sim {
     for (const pid of this.sortedIds()) {
       const p = this.players.get(pid)
       if (p.ship.sinking || p.ship.hp <= 0) continue
-      entries.push({ id: pid, ship: p.ship, player: p, invuln: p.invulnT > 0 })
+      entries.push({ id: pid, ship: p.ship, player: p,
+        invuln: p.invulnT > 0 || p.dockPort >= 0 })   // moored ships are ram-proof
     }
     for (const u of this.aiFleet.units) {
       if (u.ship.sinking || u.ship.hp <= 0) continue
@@ -426,6 +461,7 @@ export class Sim {
     if (isBow && !(p.ship.bowGuns > 0)) return false
     const loaded = isBow ? p.reloadB <= 0 : (side === 1 ? p.reloadP <= 0 : p.reloadS <= 0)
     if (!loaded || p.ship.sinking) return false
+    if (p.dockPort >= 0) return false   // guns stay cold in a neutral port
 
     const reloadTime = p.buffReload > 0 ? RELOAD_TIME * 0.5 : RELOAD_TIME
     if (p.buffReload > 0) p.buffReload--
@@ -447,6 +483,17 @@ export class Sim {
       p.ammoShots--
       opts.speedMul = 1.35
       dmgMul = 1.5
+    }
+    // Powder keg: one overloaded broadside — and black powder is temperamental
+    if (!isBow && p.kegShots > 0) {
+      p.kegShots--
+      dmgMul *= 1.4
+      if (this.rng.next() < 0.08) {
+        p.ship.damage(5)
+        if (p.id === this.hooks.selfId) {
+          this.hooks.feed('💥 The keg sparked on the deck — 5 hull scorched!')
+        }
+      }
     }
 
     const balls = isBow
@@ -570,11 +617,86 @@ export class Sim {
     }
   }
 
+  /**
+   * Store purchase — arrives as a lockstep cmd on the confirmed timeline, so
+   * every peer validates and applies it at the same tick. Invalid buys
+   * (undocked, broke, maxed) are ignored identically everywhere.
+   */
+  _buyItem(pid, idx) {
+    const p = this.players.get(pid)
+    const item = STORE_ITEMS[idx]
+    if (!p || !item || p.dockPort < 0 || p.ship.sinking) return
+    const s = p.ship
+    const isMe = pid === this.hooks.selfId
+    const name = this.hooks.resolveName(pid)
+    let cost = item.price
+    switch (item.key) {
+      case 'repair': {
+        const missing = Math.max(0, s.maxHp - s.hp)
+        if (missing < 1) return
+        cost = Math.ceil(missing * item.price)
+        if (p.gold < cost) return
+        s.hp = s.maxHp
+        s.clearStatusEffects()
+        s._redrawHealthBar()
+        if (isMe) this.hooks.feed(`🔧 Hull patched to full for ${cost} gold`)
+        break
+      }
+      case 'plank':
+        if (p.upPlank >= 2 || p.gold < cost) return
+        p.upPlank++
+        s.maxHp += 25
+        s.hp += 25
+        s._redrawHealthBar()
+        this.hooks.feed(`🪵 ${name} reinforced with oak planking (+25 hull)`)
+        break
+      case 'cannon':
+        if (p.upCannon >= 2 || p.gold < cost) return
+        p.upCannon++
+        s.sideGuns += 1
+        this.hooks.feed(`🧨 ${name} ran out an extra gun per broadside!`)
+        break
+      case 'sails':
+        if (p.upSails >= 1 || p.gold < cost) return
+        p.upSails = 1
+        s.speedMul *= 1.12
+        this.hooks.feed(`⛵ ${name} bent on silk sails (+12% speed)`)
+        break
+      case 'chain':
+        if (p.gold < cost) return
+        p.ammoShots += 2
+        if (isMe) this.hooks.feed('🔗 Chain shot loaded — next 2 broadsides fly fast & hard')
+        break
+      case 'keg':
+        if (p.gold < cost) return
+        p.kegShots += 1
+        if (isMe) this.hooks.feed('💥 A powder keg on deck — next broadside hits +40%… mind the sparks')
+        break
+      default: return
+    }
+    p.gold -= cost
+    if (isMe) this.sfx.coins()
+  }
+
   _sinkPlayer(p, killerId) {
     if (p.ship.sinking) return
     p.ship.startSinking()
     p.d++
     p.respawnT = RESPAWN_SECS
+
+    // Davy Jones takes his cut: one purchased upgrade goes down with her
+    const owned = []
+    if (p.upPlank > 0) owned.push('plank')
+    if (p.upCannon > 0) owned.push('cannon')
+    if (p.upSails > 0) owned.push('sails')
+    if (owned.length) {
+      const lost = owned[this.rng.int(owned.length)]
+      if (lost === 'plank') { p.upPlank--; p.ship.maxHp -= 25 }
+      else if (lost === 'cannon') { p.upCannon--; p.ship.sideGuns -= 1 }
+      else { p.upSails = 0; p.ship.speedMul /= 1.12 }
+      const label = { plank: 'oak planking', cannon: 'extra cannons', sails: 'silk sails' }[lost]
+      this.hooks.feed(`🌊 ${this.hooks.resolveName(p.id)}'s ${label} went down with the ship`)
+    }
 
     const pos = p.ship.position
     const listener = this._listenerPos()
@@ -672,6 +794,8 @@ export class Sim {
         am: p.ammoShots, aa: p.autoShots, g: p.gold, k: p.k, d: p.d,
         rd: p.rudder, hh: p.heldHeading,
         rt: p.respawnT, iv: p.invulnT, la: p.lastAttacker, pk: p.parked ? 1 : 0,
+        dp: p.dockPort, u1: p.upPlank, u2: p.upCannon, u3: p.upSails,
+        kg: p.kegShots, mh: s.maxHp, sgn: s.sideGuns, smu: s.speedMul,
       })
     }
     return {
@@ -738,6 +862,10 @@ export class Sim {
       p.rudder = row.rd ?? 0; p.heldHeading = row.hh ?? null
       p.respawnT = row.rt; p.invulnT = row.iv; p.lastAttacker = row.la
       p.parked = !!row.pk
+      p.dockPort = row.dp ?? -1
+      p.upPlank = row.u1 ?? 0; p.upCannon = row.u2 ?? 0; p.upSails = row.u3 ?? 0
+      p.kegShots = row.kg ?? 0
+      if (row.mh !== undefined) { s.maxHp = row.mh; s.sideGuns = row.sgn; s.speedMul = row.smu }
     }
   }
 
@@ -748,6 +876,7 @@ export class Sim {
     this._windOff  = (this.seed % 100000)
     this.world.buildIslands(this.seed)
     this.forts.generate(this.seed)
+    this.ports?.generate(this.seed, this.forts.forts)
     // Init the fleet with a throwaway rng (positions are overwritten by load),
     // THEN restore the real stream so no draws are lost or added.
     this.aiFleet.init(new DRng(this.seed))
@@ -770,6 +899,9 @@ export class Sim {
       ship.speed = row.sp
       ship.sail  = row.sl
       ship.hp    = row.hp
+      if (row.mh !== undefined) {
+        ship.maxHp = row.mh; ship.sideGuns = row.sgn; ship.speedMul = row.smu
+      }
       ship._statusT = row.st
       ship._leaks  = (row.lk ?? []).slice()
       ship._rigDmg = (row.rg ?? []).slice()
@@ -786,6 +918,9 @@ export class Sim {
         rudder: row.rd ?? 0, heldHeading: row.hh ?? null,
         respawnT: row.rt, invulnT: row.iv, lastAttacker: row.la, lastThud: -10,
         parked: !!row.pk,
+        dockPort: row.dp ?? -1,
+        upPlank: row.u1 ?? 0, upCannon: row.u2 ?? 0, upSails: row.u3 ?? 0,
+        kegShots: row.kg ?? 0,
       })
     }
   }
@@ -806,6 +941,8 @@ export class Sim {
         .num(s.position.y).num(s.pitch).num(s.roll)
         .num(s.hp).num(s.sail).num(s.speed)
         .int(p.gold).int(p.k).int(p.d).int(p.ammoShots).int(p.autoShots)
+        .int(p.dockPort).int(p.upPlank).int(p.upCannon).int(p.upSails)
+        .int(p.kegShots).num(s.maxHp).int(s.sideGuns).num(s.speedMul)
         .num(p.reloadP).num(p.reloadS).num(p.reloadB)
         .num(p.rudder).num(p.heldHeading ?? 0).int(p.heldHeading === null ? 1 : 0)
         .int(p.parked ? 1 : 0)

@@ -93,6 +93,17 @@ export class WorldMap {
       }
     }
 
+    // Trading ports — an anchor marks each neutral cove
+    for (const port of game.ports?.list ?? []) {
+      const [mx, my] = this._toMap(port.x, port.z, size)
+      ctx.font = 'bold 13px Georgia, serif'
+      ctx.textAlign = 'center'
+      ctx.fillStyle = '#8a5c14'
+      ctx.fillText('⚓', mx, my + 4)
+      ctx.font = '9px Georgia, serif'
+      ctx.fillText(port.name, mx, my + 15)
+    }
+
     // Forts: little keeps — filled while the garrison stands, hollow ruins after
     if (game._forts) {
       for (const f of game._forts.list()) {
