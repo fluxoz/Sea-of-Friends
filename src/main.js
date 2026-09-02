@@ -344,6 +344,48 @@ async function init() {
  * Set the scroll alight: an animated mask consumes the panel from the bottom
  * while a particle canvas renders the fire front — flames, embers, smoke.
  */
+// ── Fire sprites for the menu burn (Kenney particle pack, CC0) ─────────────
+// White-on-alpha sprites tinted once at load; drawn additively they read as
+// real licking flames instead of gradient blobs.
+const _fireSprites = { ready: false }
+{
+  const tint = (img, color) => {
+    const c = document.createElement('canvas')
+    c.width = img.width; c.height = img.height
+    const g = c.getContext('2d')
+    g.drawImage(img, 0, 0)
+    g.globalCompositeOperation = 'source-in'
+    g.fillStyle = color
+    g.fillRect(0, 0, c.width, c.height)
+    return c
+  }
+  const load = src => new Promise(res => {
+    const im = new Image()
+    im.onload = () => res(im)
+    im.onerror = () => res(null)
+    im.src = src
+  })
+  Promise.all([
+    load('/assets/extra/particles/flame_05.png'),
+    load('/assets/extra/particles/flame_06.png'),
+    load('/assets/extra/particles/flame_02.png'),
+    load('/assets/extra/particles/smoke_07.png'),
+    load('/assets/extra/particles/flare_01.png'),
+  ]).then(([f5, f6, f2, sm, fl]) => {
+    if (!f5 || !f6 || !f2 || !sm || !fl) return
+    _fireSprites.tongues = [
+      tint(f5, '#ff8a1f'), tint(f6, '#ff9d2e'),
+      tint(f5, '#ffc148'), tint(f6, '#ff6a14'),
+    ]
+    // (flame_02's wisps run to the tile edge and ghost as squares when drawn
+    // additively — the tongue sprites have clean silhouettes)
+    _fireSprites.billow = [tint(f5, '#ff7a1a'), tint(f6, '#ffb43a')]
+    _fireSprites.smoke  = [tint(sm, '#4a443e')]
+    _fireSprites.ember  = tint(fl, '#ffb050')
+    _fireSprites.ready  = true
+  })
+}
+
 function burnMenu(done) {
   const panel = document.getElementById('join-panel')
   const fading = ['title', 'tagline', 'features', 'join-hint', 'public-seas-btn']
@@ -377,19 +419,41 @@ function burnMenu(done) {
     for (const el of fading) el.style.opacity = String(Math.max(0, 1 - k * 1.4))
 
     // Feed the fire along the burn front
+    const S = _fireSprites
     if (k < 1) {
-      for (let i = 0; i < 16; i++) {
+      for (let i = 0; i < (S.ready ? 10 : 16); i++) {
         const x = rect.left + Math.random() * rect.width
-        const smoke = Math.random() < 0.25
-        parts.push({
-          x, y: burnY + (Math.random() - 0.5) * 10,
-          vx: (Math.random() - 0.5) * 30,
-          vy: -(30 + Math.random() * (smoke ? 40 : 110)),
-          life: smoke ? 0.9 + Math.random() * 0.5 : 0.35 + Math.random() * 0.45,
-          age: 0,
-          size: smoke ? 8 + Math.random() * 10 : 3 + Math.random() * 6,
-          smoke,
-        })
+        if (S.ready) {
+          const r = Math.random()
+          const kind = r < 0.3 ? 'smoke' : r < 0.55 ? 'flame' : 'ember'
+          parts.push({
+            kind, x, y: burnY + (Math.random() - 0.5) * 8,
+            vx: (Math.random() - 0.5) * 26,
+            vy: -(kind === 'smoke' ? 35 + Math.random() * 45
+                : kind === 'flame' ? 55 + Math.random() * 70
+                : 60 + Math.random() * 130),
+            life: kind === 'smoke' ? 1.0 + Math.random() * 0.7
+                : kind === 'flame' ? 0.45 + Math.random() * 0.35
+                : 0.5 + Math.random() * 0.6,
+            age: 0,
+            size: kind === 'smoke' ? 26 + Math.random() * 26
+                : kind === 'flame' ? 26 + Math.random() * 22
+                : 5 + Math.random() * 7,
+            rot: Math.random() * 6.28, spin: (Math.random() - 0.5) * 3,
+            spr: (Math.random() * 4) | 0,
+          })
+        } else {
+          const smoke = Math.random() < 0.25
+          parts.push({
+            x, y: burnY + (Math.random() - 0.5) * 10,
+            vx: (Math.random() - 0.5) * 30,
+            vy: -(30 + Math.random() * (smoke ? 40 : 110)),
+            life: smoke ? 0.9 + Math.random() * 0.5 : 0.35 + Math.random() * 0.45,
+            age: 0,
+            size: smoke ? 8 + Math.random() * 10 : 3 + Math.random() * 6,
+            smoke,
+          })
+        }
       }
     }
 
@@ -405,6 +469,24 @@ function burnMenu(done) {
       ctx.fillStyle = grad
       ctx.fillRect(rect.left - 10, burnY - 18, rect.width + 20, 30)
       ctx.restore()
+
+      // A rank of real flame tongues licking along the front
+      if (S.ready) {
+        ctx.save()
+        ctx.globalCompositeOperation = 'lighter'
+        const nA = 12
+        for (let i = 0; i < nA; i++) {
+          const ax = rect.left + ((i + 0.5) / nA) * rect.width
+          const ph = i * 2.39
+          const hgt = (34 + 26 * (0.6 + 0.4 * Math.sin(now * 0.013 + ph)))
+                    * (0.75 + Math.random() * 0.35)
+          const wdt = 24 + 9 * Math.sin(now * 0.017 + ph * 2)
+          const spr = S.tongues[(i + ((now / 90) | 0)) % S.tongues.length]
+          ctx.globalAlpha = 0.85
+          ctx.drawImage(spr, ax - wdt / 2, burnY - hgt, wdt, hgt)
+        }
+        ctx.restore()
+      }
     }
     for (let i = parts.length - 1; i >= 0; i--) {
       const p = parts[i]
@@ -412,17 +494,41 @@ function burnMenu(done) {
       if (p.age >= p.life) { parts.splice(i, 1); continue }
       p.x += p.vx * dt
       p.y += p.vy * dt
+      p.rot = (p.rot ?? 0) + (p.spin ?? 0) * dt
       const t = p.age / p.life
-      ctx.globalCompositeOperation = p.smoke ? 'source-over' : 'lighter'
-      if (p.smoke) {
-        ctx.fillStyle = `rgba(70,60,55,${0.3 * (1 - t)})`
+      if (p.kind && S.ready) {
+        // Real sprites: rising billow flames, curling smoke, glowing embers
+        if (p.kind === 'smoke') {
+          ctx.globalCompositeOperation = 'source-over'
+          ctx.globalAlpha = 0.35 * (1 - t)
+          const s = p.size * (1 + t * 1.6)
+          ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot)
+          ctx.drawImage(S.smoke[0], -s / 2, -s / 2, s, s); ctx.restore()
+        } else if (p.kind === 'flame') {
+          ctx.globalCompositeOperation = 'lighter'
+          ctx.globalAlpha = 0.8 * (1 - t)
+          const s = p.size * (1 - t * 0.4)
+          ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot * 0.3)
+          ctx.drawImage(S.billow[p.spr % S.billow.length], -s / 2, -s / 2, s, s); ctx.restore()
+        } else {
+          ctx.globalCompositeOperation = 'lighter'
+          ctx.globalAlpha = 0.9 * (1 - t)
+          const s = p.size * (1 - t * 0.5)
+          ctx.drawImage(S.ember, p.x - s / 2, p.y - s / 2, s, s)
+        }
+        ctx.globalAlpha = 1
       } else {
-        const r = 255, g = Math.round(200 - t * 160), b = Math.round(80 - t * 70)
-        ctx.fillStyle = `rgba(${r},${g},${b},${0.85 * (1 - t)})`
+        ctx.globalCompositeOperation = p.smoke ? 'source-over' : 'lighter'
+        if (p.smoke) {
+          ctx.fillStyle = `rgba(70,60,55,${0.3 * (1 - t)})`
+        } else {
+          const r = 255, g = Math.round(200 - t * 160), b = Math.round(80 - t * 70)
+          ctx.fillStyle = `rgba(${r},${g},${b},${0.85 * (1 - t)})`
+        }
+        ctx.beginPath()
+        ctx.arc(p.x, p.y, p.size * (p.smoke ? 1 + t : 1 - t * 0.5), 0, Math.PI * 2)
+        ctx.fill()
       }
-      ctx.beginPath()
-      ctx.arc(p.x, p.y, p.size * (p.smoke ? 1 + t : 1 - t * 0.5), 0, Math.PI * 2)
-      ctx.fill()
     }
 
     if (k < 1 || parts.length) requestAnimationFrame(frame)
