@@ -57,6 +57,16 @@ export async function fetchTurnServers(timeoutMs = 2500) {
 export const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev'
 const APP_ID = `sea-of-friends-${APP_VERSION}`
 
+/** Small non-crypto string hash — adequate for the friends-trust model. */
+function tokHash(s) {
+  let h1 = 0x811c9dc5, h2 = 0x01000193
+  for (let i = 0; i < s.length; i++) {
+    h1 = Math.imul(h1 ^ s.charCodeAt(i), 0x01000193) >>> 0
+    h2 = (Math.imul(h2, 31) + s.charCodeAt(i) * 7 + 0x9e3779b9) >>> 0
+  }
+  return h1.toString(36) + '.' + h2.toString(36)
+}
+
 /** Interval (ms) between latency pings sent to each peer. */
 const PING_INTERVAL = 2000
 
@@ -139,6 +149,21 @@ export class NetworkManager {
     this.selfId = selfId
     this.roomId = roomId
     this._localInfo = null
+    // Persistent captain token: survives refresh, lets a returning session
+    // reclaim its parked ship. The HASH is public (broadcast in info); the
+    // preimage is revealed only inside a join claim.
+    this.token = (() => {
+      try {
+        let t = localStorage.getItem('sof-tok')
+        if (!t) {
+          t = [...crypto.getRandomValues(new Uint8Array(12))]
+            .map(b => b.toString(16).padStart(2, '0')).join('')
+          localStorage.setItem('sof-tok', t)
+        }
+        return t
+      } catch { return Math.random().toString(36).slice(2) }
+    })()
+    this._tokHashes = new Map()   // pid -> token hash, kept after disconnect
     this._pingTimestamps = new Map()
 
     // ── Callbacks ──────────────────────────────────────────────────────────
@@ -278,7 +303,7 @@ export class NetworkManager {
     this.sendHashMsg = data => sendHash(data)
     this.sendLastIn  = data => sendLastIn(data)
     this.sendRelayIn = data => sendRelayIn(data)
-    this.sendBye     = () => { try { sendBye({}) } catch { /* leaving anyway */ } }
+    this.sendBye     = (returning = false) => { try { sendBye({ r: returning ? 1 : 0 }) } catch { /* leaving anyway */ } }
     this.sendVote    = data => sendVote(data)
 
     // ── Peer lifecycle ─────────────────────────────────────────────────────
@@ -302,6 +327,7 @@ export class NetworkManager {
     onInfo((data, peerId) => {
       const peer = this.peers.get(peerId)
       if (peer) Object.assign(peer, data)
+      if (data?.th) this._tokHashes.set(peerId, data.th)
       if (this.onPeerInfo) this.onPeerInfo(peerId, data)
     })
 
@@ -316,7 +342,7 @@ export class NetworkManager {
     onHash((data, peerId)    => { if (!this.blackhole && this.onHashMsg) this.onHashMsg(peerId, data) })
     onLastIn((data, peerId)  => { if (!this.blackhole && this.onLastIn)  this.onLastIn(peerId, data) })
     onRelayIn((data, peerId) => { if (!this.blackhole && this.onRelayIn) this.onRelayIn(peerId, data) })
-    onBye((_d, peerId)       => { if (this.onBye) this.onBye(peerId) })
+    onBye((d, peerId)        => { if (this.onBye) this.onBye(peerId, d) })
     onVote((data, peerId)    => { if (!this.blackhole && this.onVote) this.onVote(peerId, data) })
 
     // ── Latency ping / pong ────────────────────────────────────────────────
@@ -345,7 +371,7 @@ export class NetworkManager {
 
   /** Announce our name & colour (cosmetic, out-of-band). */
   setLocalInfo(name, color) {
-    this._localInfo = { ...this._localInfo, name, color }
+    this._localInfo = { ...this._localInfo, name, color, th: tokHash(this.token) }
     this._sendInfo(this._localInfo)
   }
 
@@ -373,6 +399,12 @@ export class NetworkManager {
   }
 
   getPeer(peerId) { return this.peers.get(peerId) }
+
+  /** True when `tok` is the preimage of the token hash `prevPid` announced. */
+  validClaim(prevPid, tok) {
+    const th = this._tokHashes.get(prevPid)
+    return !!th && !!tok && tokHash(tok) === th
+  }
   getPeerIds()    { return [...this.peers.keys()] }
   getLocalColor() { return this._localInfo?.color ?? null }
   getLocalName()  { return this._localInfo?.name ?? null }

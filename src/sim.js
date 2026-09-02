@@ -76,7 +76,7 @@ export class Sim {
 
   sortedIds() { return [...this.players.keys()].sort() }
 
-  addPlayer(pid, cls = 'frigate') {
+  addPlayer(pid, cls = 'frigate', take = null) {
     const existing = this.players.get(pid)
     if (existing) {
       // A parked captain coming back aboard — same ship, same purse
@@ -85,6 +85,24 @@ export class Sim {
         this.hooks.feed(`⚓ ${this.hooks.resolveName(pid)} is back at the helm`)
       }
       return
+    }
+    // Takeover: a refreshed session reclaiming its parked ship under a new
+    // pid — same hull, purse, and upgrades carry over (cmd-ordered, so every
+    // peer rekeys identically)
+    if (take && take !== pid) {
+      const old = this.players.get(take)
+      if (old && old.parked) {
+        this.players.delete(take)
+        old.id = pid
+        old.parked = false
+        old.dockPort = -1
+        this.players.set(pid, old)
+        old.ship.isLocal = pid === this.hooks.selfId
+        old.ship.setHealthBarVisible(pid !== this.hooks.selfId)
+        this.hooks.feed(`⚓ ${this.hooks.resolveName(pid)} is back at the helm — same ship, same purse`)
+        if (pid === this.hooks.selfId) this.hooks.onLocal({ type: 'respawn' })
+        return
+      }
     }
     const spawn = this._pickSpawn()
     const ship = new Ship(this.scene, pid.slice(0, 8), 0xc8a96e,
@@ -156,7 +174,7 @@ export class Sim {
 
     // Roster changes ride inside the input stream → same tick on every peer
     for (const cmd of cmds) {
-      if (cmd.j) this.addPlayer(cmd.j, cmd.c)
+      if (cmd.j) this.addPlayer(cmd.j, cmd.c, cmd.tk)
       if (cmd.p) this.parkPlayer(cmd.p)
       if (cmd.d) this.removePlayer(cmd.d)
       if (cmd.b !== undefined && cmd.w) this._buyItem(cmd.w, cmd.b)

@@ -152,7 +152,12 @@ export class Lockstep {
       }
       if (this.roster.has(pid) && this.roster.get(pid).end === null) return
       if (!this._pendingJoins.some(j => j.pid === pid)) {
-        this._pendingJoins.push({ pid, cls: data?.c })
+        // A returning captain proves ownership of their previous pid by
+        // revealing the preimage of the token hash that pid announced
+        const take = data?.prev && data?.tok && data.prev !== pid
+          && this.network.validClaim?.(data.prev, data.tok)
+          ? data.prev : undefined
+        this._pendingJoins.push({ pid, cls: data?.c, take })
       }
     }
 
@@ -217,7 +222,9 @@ export class Lockstep {
     net.onPeerGone = pid => this._beginLeave(pid)
 
     // A peer that says goodbye is quitting on purpose — no parking grace
-    net.onBye = pid => this._deliberate.add(pid)
+    // r:1 = 'maybe returning' (refresh/update): let the parking grace hold
+    // their ship; a plain bye is a deliberate quit
+    net.onBye = (pid, d) => { if (!d?.r) this._deliberate.add(pid) }
   }
 
   _receiveInput(pid, packet) {
@@ -387,7 +394,10 @@ export class Lockstep {
     // votekick — the crew doesn't want us back)
     if (!this._selfLive && !this.kicked && now - this._jreqSent > 2000) {
       this._jreqSent = now
-      this.network.sendJreq({ c: this.shipClass })
+      this.network.sendJreq({
+        c: this.shipClass,
+        ...(this.network.resumeClaim ?? {}),
+      })
     }
 
     // Send inputs ahead of execution (INPUT_DELAY hides network latency).
@@ -555,7 +565,15 @@ export class Lockstep {
       if (pid === orderer && Array.isArray(packet.c)) {
         for (const cmd of packet.c) {
           cmds.push(cmd)
-          if (cmd.j) this.roster.set(cmd.j, { start: t + INPUT_DELAY + JOIN_MARGIN, end: null })
+          if (cmd.j) {
+            this.roster.set(cmd.j, { start: t + INPUT_DELAY + JOIN_MARGIN, end: null })
+            // Takeover: the reclaimed pid's roster entry closes here if the
+            // departure settlement hasn't already closed it
+            if (cmd.tk) {
+              const e = this.roster.get(cmd.tk)
+              if (e && e.end === null) e.end = t
+            }
+          }
           if (cmd.d) {
             const e = this.roster.get(cmd.d)
             if (e && e.end === null) e.end = t
@@ -642,7 +660,7 @@ export class Lockstep {
         if (!this._sentCmdsFor.has(join.pid)) {
           this._sentCmdsFor.add(join.pid)
           this._parkExpiry.delete(join.pid)   // coming back aboard — unpark
-          cmds.push({ j: join.pid, c: join.cls })
+          cmds.push({ j: join.pid, c: join.cls, ...(join.take ? { tk: join.take } : {}) })
         }
       }
       this._pendingJoins = []
