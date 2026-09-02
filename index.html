@@ -745,7 +745,9 @@
     /* ── Chat ────────────────────────────────────────────────── */
     #chat-box {
       position: absolute; bottom: 1rem; left: 1rem;
-      width: min(35rem, calc(100vw - 2rem), 46vw);
+      /* Never cross into the centered battle console (center ± 12rem):
+         cap at the free space left of it, with a floor for usability */
+      width: min(35rem, calc(100vw - 2rem), max(16rem, calc(50vw - 12rem)));
       pointer-events: all;
     }
 
@@ -871,7 +873,7 @@
     /* ── Controls hint: a stitched note ──────────────────────── */
     #controls-hint {
       position: absolute; bottom: 1rem; right: 1rem;
-      max-width: 44vw;
+      max-width: max(14rem, calc(50vw - 12rem));
       color: rgba(240, 228, 196, 0.8); font-size: 0.7rem; text-align: right;
       line-height: 1.75; font-weight: 500;
       background: rgba(8, 16, 30, 0.6);
@@ -879,8 +881,8 @@
       border-radius: 12px;
       padding: 0.55rem 0.85rem;
     }
-    /* A very short window has no room for the tutorial card */
-    @media (max-height: 560px) { #controls-hint { display: none; } }
+    /* A very short or narrow window has no room for the tutorial card */
+    @media (max-height: 560px), (max-width: 1100px) { #controls-hint { display: none; } }
     #controls-hint b { color: #ffd975; font-weight: 600; }
 
     /* ── Player name labels ──────────────────────────────────── */
