@@ -290,7 +290,8 @@
     /* The boarding card: an unrolled parchment scroll */
     #join-panel {
       position: relative;
-      display: flex; flex-direction: column; gap: 0.7rem;
+      display: flex; flex-direction: column;
+      gap: clamp(0.3rem, 1.1vh, 0.7rem);
       width: min(30rem, 94vw);
       aspect-ratio: 284 / 342;
       padding: 5.75rem 4rem 5.5rem;
@@ -303,6 +304,7 @@
       filter: drop-shadow(0 16px 30px rgba(0, 0, 0, 0.55));
     }
     /* (rolled ends are part of the scroll artwork) */
+    #join-panel > * { flex-shrink: 0; }
     #join-panel label {
       font-size: 0.72rem; color: #6e532e;
       text-transform: uppercase; letter-spacing: 0.16em;
@@ -328,11 +330,14 @@
     #join-btn {
       margin-top: 0.5rem;
       align-self: center;
+      /* NEVER let the flex column squash the plaque — a shrunk button gets
+         its face carved up by the octagon clip-path */
+      flex-shrink: 0;
       padding: 0.55rem 2.6rem;
       background: linear-gradient(180deg, #fff6dd 0%, #f2e0b2 55%, #e3ca92 100%);
       color: #4a2f14;
       border: 2px solid #b28d55;
-      clip-path: polygon(12px 0, calc(100% - 12px) 0, 100% 40%, 100% 60%, calc(100% - 12px) 100%, 12px 100%, 0 60%, 0 40%);
+      clip-path: polygon(0.75rem 0, calc(100% - 0.75rem) 0, 100% 40%, 100% 60%, calc(100% - 0.75rem) 100%, 0.75rem 100%, 0 60%, 0 40%);
       font-size: 1.45rem;
       font-family: var(--font-title);
       letter-spacing: 0.08em;
