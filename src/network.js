@@ -182,6 +182,27 @@ export class NetworkManager {
     )
     this._room = room
 
+    // Version lobby: a version-INDEPENDENT swarm for the same room code, so
+    // crews split by a protocol bump can at least be told who needs to
+    // refresh. This appId must never change across versions.
+    try {
+      const lobby = joinRoom(
+        {
+          appId: 'sea-of-friends-lobby',
+          rtcConfig: { iceServers: [...ICE_SERVERS, ..._turnServers] },
+          relayUrls: relays ? relays.split(',') : DEFAULT_RELAYS,
+          relayRedundancy: 2,
+        },
+        roomId,
+      )
+      this._lobby = lobby
+      const [sendVer, onVer] = lobby.makeAction('v')
+      lobby.onPeerJoin(() => { try { sendVer({ v: APP_VERSION }) } catch {} })
+      onVer(data => {
+        if (data?.v && data.v !== APP_VERSION) this.onVersionMismatch?.(data.v)
+      })
+    } catch { /* lobby is best-effort — the game works without it */ }
+
     const [sendInfo, onInfo]   = room.makeAction('i')
     const [sendChat, onChat]   = room.makeAction('c')
     const [sendPing, onPing]   = room.makeAction('pg')
@@ -347,6 +368,7 @@ export class NetworkManager {
   leave() {
     clearInterval(this._pingTimer)
     try { this._room.leave() } catch {}
+    try { this._lobby?.leave() } catch {}
     this.peers.clear()
   }
 
