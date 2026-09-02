@@ -386,7 +386,7 @@ export class Game {
         this._sfx.beginTick(t)
         try {
           this.sim.step(t, inputs, cmds.map(c =>
-            c.j ? { j: c.j, c: c.c } : c.p ? { p: c.p } : c.d ? { d: c.d, k: c.k } : c))
+            c.j ? { j: c.j, c: c.c, tk: c.tk } : c.p ? { p: c.p } : c.d ? { d: c.d, k: c.k } : c))
         } finally {
           this._sfx.endTick()
         }

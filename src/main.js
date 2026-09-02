@@ -38,7 +38,10 @@ function watchForNewVersion() {
       el.textContent = protocol
         ? `⚓ A new version has shipped (${version}) — click to refresh and rejoin the fleet`
         : '🎨 A fresh coat of paint has shipped — click to refresh (same sea, same crew, no rush)'
-      el.addEventListener('click', () => location.reload())
+      el.addEventListener('click', () => {
+        try { sessionStorage.setItem('sof-resume', '1') } catch {}
+        location.reload()
+      })
       document.body.appendChild(el)
       addSystemMessage(protocol
         ? `⚓ New version ${version} is live — refresh to sail with the fleet (you're on ${APP_VERSION})`
@@ -244,11 +247,34 @@ async function init() {
 
   loadingEl.style.display  = 'none'
   nameScreen.style.display = 'flex'
+  // Last voyage: prefill name/room/ship so a refresh needs one click — and
+  // an update-banner refresh needs none (straight back to the same sea)
+  let lastVoyage = null
+  try { lastVoyage = JSON.parse(localStorage.getItem('sof-last') ?? 'null') } catch {}
+  if (lastVoyage?.name && !nameInput.value) nameInput.value = lastVoyage.name.slice(0, 20)
+  if (lastVoyage?.room && !ROOM_PARAM) roomInput.value = lastVoyage.room.slice(0, 32)
+  if (lastVoyage?.cls) {
+    const card = document.querySelector(`.ship-card[data-cls="${lastVoyage.cls}"]`)
+    if (card) {
+      document.querySelectorAll('.ship-card').forEach(c => c.classList.remove('selected'))
+      card.classList.add('selected')
+    }
+  }
   if (ROOM_PARAM) {
     roomInput.value = ROOM_PARAM.slice(0, 32)
     addSystemMessage(`⚓ Invited to sea "${roomInput.value}" — name yerself and set sail`)
   }
   nameInput.focus()
+  let autoResumed = false
+  try {
+    if (sessionStorage.getItem('sof-resume') === '1' && lastVoyage?.name && lastVoyage?.room) {
+      sessionStorage.removeItem('sof-resume')
+      autoResumed = true
+      addSystemMessage('⚓ Fresh build taken aboard — returning to yer sea…')
+      setTimeout(() => joinBtn.click(), 300)
+    }
+  } catch {}
+  if (!autoResumed) nameInput.focus()
   watchForNewVersion()
   const stamp = document.getElementById('ver-stamp')
   if (stamp) {
@@ -258,7 +284,13 @@ async function init() {
   // Warm the TURN credentials while the captain reads the menu, so joining
   // never waits on it; STUN-only if it fails (local dev, offline)
   fetchTurnServers()
-  window.addEventListener('pagehide', () => network?.sendBye?.())
+  window.addEventListener('pagehide', () => {
+  network?.sendBye?.(true)   // maybe returning — let the grace hold the ship
+  try {
+    const last = JSON.parse(localStorage.getItem('sof-last') ?? 'null')
+    if (last) { last.at = Date.now(); localStorage.setItem('sof-last', JSON.stringify(last)) }
+  } catch {}
+})
 }
 
 // ── Settings panel ────────────────────────────────────────────────────────────
@@ -617,6 +649,22 @@ function startGame(playerName) {
   const color = Math.random() * 0xffffff | 0
 
   network = new NetworkManager(roomId)
+
+  // Refresh-resume: if we were sailing THIS room moments ago (an update
+  // refresh, a stumble), claim our previous pid — the parking grace held the
+  // ship, and the takeover join hands back hull, purse, and upgrades
+  try {
+    const last = JSON.parse(localStorage.getItem('sof-last') ?? 'null')
+    if (last && last.room === roomId && last.pid
+        && Date.now() - (last.at ?? 0) < 50000) {
+      network.resumeClaim = { prev: last.pid, tok: network.token }
+    }
+    localStorage.setItem('sof-last', JSON.stringify({
+      room: roomId, name: playerName, cls: shipClass,
+      pid: network.selfId, at: Date.now(),
+    }))
+  } catch { /* storage unavailable — resume is a convenience */ }
+
   // A crewmate in this room is on a DIFFERENT protocol version — the swarms
   // can't meet, so tell the captain who has to refresh (once per version)
   const _versionWarned = new Set()
