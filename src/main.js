@@ -406,6 +406,31 @@ function burnMenu(done) {
   const t0 = performance.now()
   let last = t0
 
+  // ── Real fire: heat-propagation simulation along the burn front ─────────
+  // Heat seeds at the front and diffuses upward with turbulent decay through
+  // a black-body palette — the flame SHAPES evolve every frame, which is
+  // what static sprites can never do. (The classic Doom-fire algorithm.)
+  const CELL = 3
+  const FW = Math.ceil((rect.width + 48) / CELL)
+  const FH = 60
+  const heat = new Uint8Array(FW * FH)          // row FH-1 = seed row
+  const fireCv = document.createElement('canvas')
+  fireCv.width = FW; fireCv.height = FH
+  const fireCtx = fireCv.getContext('2d')
+  const fireImg = fireCtx.createImageData(FW, FH)
+  const PAL_STOPS = [
+    [0, 0, 0, 0], [90, 12, 0, 70], [170, 40, 5, 150], [225, 95, 12, 205],
+    [255, 170, 35, 235], [255, 225, 130, 250], [255, 250, 220, 255],
+  ]
+  const PAL = []
+  for (let i = 0; i <= 36; i++) {
+    const t = (i / 36) * (PAL_STOPS.length - 1)
+    const a = PAL_STOPS[Math.floor(t)], b = PAL_STOPS[Math.min(PAL_STOPS.length - 1, Math.floor(t) + 1)]
+    const f = t - Math.floor(t)
+    PAL.push([0, 1, 2, 3].map(c => Math.round(a[c] + (b[c] - a[c]) * f)))
+  }
+  let fireAcc = 0, fireAlive = true
+
   function frame(now) {
     const dt = Math.min((now - last) / 1000, 0.05)
     last = now
@@ -424,8 +449,8 @@ function burnMenu(done) {
       for (let i = 0; i < (S.ready ? 10 : 16); i++) {
         const x = rect.left + Math.random() * rect.width
         if (S.ready) {
-          const r = Math.random()
-          const kind = r < 0.3 ? 'smoke' : r < 0.55 ? 'flame' : 'ember'
+          // The heat sim IS the flame body — sprites add smoke and embers
+          const kind = Math.random() < 0.4 ? 'smoke' : 'ember'
           parts.push({
             kind, x, y: burnY + (Math.random() - 0.5) * 8,
             vx: (Math.random() - 0.5) * 26,
@@ -458,35 +483,58 @@ function burnMenu(done) {
     }
 
     ctx.clearRect(0, 0, cv.width, cv.height)
-    // Ember glow along the front
-    if (k < 1) {
+
+    // Advance the fire simulation at ~45 Hz regardless of display rate
+    fireAcc += dt
+    while (fireAcc >= 1 / 45) {
+      fireAcc -= 1 / 45
+      for (let x2 = 0; x2 < FW; x2++) {
+        const idx = (FH - 1) * FW + x2
+        if (k < 1) {
+          // Tapered, undulating fuel line — flames, not a uniform slab
+          const u = x2 / FW
+          const taper = Math.min(1, u * 12) * Math.min(1, (1 - u) * 12)
+          const wave = 0.72 + 0.28 * Math.sin(x2 * 0.31 + now * 0.006)
+                     + 0.15 * Math.sin(x2 * 0.11 - now * 0.004)
+          heat[idx] = Math.max(0, Math.min(36,
+            (26 + Math.random() * 11) * taper * wave)) | 0
+        } else {
+          heat[idx] = Math.max(0, heat[idx] - 6)  // fuel spent — dies down
+        }
+      }
+      for (let y2 = 0; y2 < FH - 1; y2++) {
+        const row = y2 * FW, below = (y2 + 1) * FW
+        for (let x2 = 0; x2 < FW; x2++) {
+          const sx = Math.min(FW - 1, Math.max(0, x2 + ((Math.random() * 3) | 0) - 1))
+          const d = (Math.random() * 3) | 0
+          const h = heat[below + sx] - d
+          heat[row + x2] = h > 0 ? h : 0
+        }
+      }
+    }
+    // Blit through the black-body palette (alpha fades the cool fringe)
+    let maxHeat = 0
+    for (let i2 = 0; i2 < heat.length; i2++) {
+      const c = PAL[heat[i2]]
+      if (heat[i2] > maxHeat) maxHeat = heat[i2]
+      const o = i2 * 4
+      const x3 = i2 % FW
+      const edge = Math.min(1, Math.min(x3, FW - 1 - x3) / 7)   // side fade
+      fireImg.data[o] = c[0]; fireImg.data[o + 1] = c[1]
+      fireImg.data[o + 2] = c[2]
+      fireImg.data[o + 3] = (c[3] * edge) | 0
+    }
+    fireAlive = maxHeat > 3
+    if (fireAlive) {
+      fireCtx.putImageData(fireImg, 0, 0)
       ctx.save()
       ctx.globalCompositeOperation = 'lighter'
-      const grad = ctx.createLinearGradient(0, burnY - 18, 0, burnY + 12)
-      grad.addColorStop(0, 'rgba(255,150,40,0)')
-      grad.addColorStop(0.7, 'rgba(255,120,20,0.55)')
-      grad.addColorStop(1, 'rgba(255,60,10,0)')
-      ctx.fillStyle = grad
-      ctx.fillRect(rect.left - 10, burnY - 18, rect.width + 20, 30)
+      ctx.imageSmoothingEnabled = true
+      ctx.filter = 'blur(2px)'
+      const fw = FW * CELL, fh = FH * CELL
+      ctx.drawImage(fireCv, rect.left - 24, burnY - fh + CELL * 3, fw, fh)
+      ctx.filter = 'none'
       ctx.restore()
-
-      // A rank of real flame tongues licking along the front
-      if (S.ready) {
-        ctx.save()
-        ctx.globalCompositeOperation = 'lighter'
-        const nA = 12
-        for (let i = 0; i < nA; i++) {
-          const ax = rect.left + ((i + 0.5) / nA) * rect.width
-          const ph = i * 2.39
-          const hgt = (34 + 26 * (0.6 + 0.4 * Math.sin(now * 0.013 + ph)))
-                    * (0.75 + Math.random() * 0.35)
-          const wdt = 24 + 9 * Math.sin(now * 0.017 + ph * 2)
-          const spr = S.tongues[(i + ((now / 90) | 0)) % S.tongues.length]
-          ctx.globalAlpha = 0.85
-          ctx.drawImage(spr, ax - wdt / 2, burnY - hgt, wdt, hgt)
-        }
-        ctx.restore()
-      }
     }
     for (let i = parts.length - 1; i >= 0; i--) {
       const p = parts[i]
@@ -531,7 +579,7 @@ function burnMenu(done) {
       }
     }
 
-    if (k < 1 || parts.length) requestAnimationFrame(frame)
+    if (k < 1 || parts.length || fireAlive) requestAnimationFrame(frame)
     else {
       cv.remove()
       // Reset for the next visit to the menu (quit button)
