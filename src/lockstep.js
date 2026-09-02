@@ -262,6 +262,23 @@ export class Lockstep {
     return low
   }
 
+  /**
+   * The cmd authority for tick t — the lowest pid ACTIVE AT t, the same
+   * tick-relative test that decides whose inputs count at t. The wall-clock
+   * _orderer() flips the moment a departure settlement resolves locally,
+   * and peers resolve settlements at different wall times: judging tick t's
+   * cmds by it made one peer honour a park/roster cmd another dropped —
+   * the long-hunted intermittent players/ai desync under connection churn.
+   */
+  _ordererAt(t) {
+    let low = null
+    for (const [pid, r] of this.roster) {
+      if (!this._activeAt(r, t)) continue
+      if (low === null || pid < low) low = pid
+    }
+    return low
+  }
+
   _activeCount() {
     let n = 0
     for (const r of this.roster.values()) if (r.end === null) n++
@@ -523,7 +540,7 @@ export class Lockstep {
   _executeConfirmed(t) {
     const inputs = new Map()
     const cmds = []
-    const orderer = this._orderer()
+    const orderer = this._ordererAt(t)
     for (const [pid, r] of this.roster) {
       if (!this._activeAt(r, t)) continue
       const packet = this.inputs.get(pid).get(t)
