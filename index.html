@@ -62,10 +62,11 @@
     :focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 2px; }
 
     /* The whole UI is rem-sized; scale the root with the viewport so the
-       menu and HUD track the screen (≈16px at 1080p, smaller on laptops,
-       larger on 1440p/4K). Mobile keeps the browser default. */
-    @media (min-width: 900px) {
-      html { font-size: clamp(11.5px, 1.5vmin, 24px); }
+       menu and HUD track the screen (≈16px at 1080p, smaller in small or
+       short windows, larger on 1440p/4K). Gated on a fine pointer so phones
+       keep the browser default for the mobile landing. */
+    @media (pointer: fine) {
+      html { font-size: clamp(10px, 1.5vmin, 24px); }
     }
 
     body {
@@ -562,7 +563,7 @@
     }
 
     #speed-bar {
-      position: absolute; bottom: 6rem; left: 50%; transform: translateX(-50%);
+      position: absolute; bottom: min(6rem, 10.5vh); left: 50%; transform: translateX(-50%);
       display: flex; align-items: center; gap: 0.6rem;
       color: var(--cream); font-size: 0.74rem;
       font-family: var(--font-display); letter-spacing: 0.07em;
@@ -572,7 +573,7 @@
 
     /* ── Helm / rudder indicator ─────────────────────────────── */
     #rudder-row {
-      position: absolute; bottom: 4.55rem; left: 50%; transform: translateX(-50%);
+      position: absolute; bottom: min(4.55rem, 8vh); left: 50%; transform: translateX(-50%);
       display: flex; align-items: center; gap: 0.5rem;
       color: rgba(247, 239, 220, 0.85); font-size: 0.62rem; letter-spacing: 0.1em;
       font-family: var(--font-display);
@@ -595,7 +596,7 @@
 
     /* ── Battle HUD: health + cannon reload ──────────────────── */
     #battle-hud {
-      position: absolute; bottom: 8rem; left: 50%; transform: translateX(-50%);
+      position: absolute; bottom: min(8rem, 14vh); left: 50%; transform: translateX(-50%);
       display: flex; flex-direction: column; align-items: center; gap: 0.5rem;
       pointer-events: none;
     }
@@ -743,7 +744,7 @@
     /* ── Chat ────────────────────────────────────────────────── */
     #chat-box {
       position: absolute; bottom: 1rem; left: 1rem;
-      width: min(35rem, calc(100vw - 2rem));
+      width: min(35rem, calc(100vw - 2rem), 46vw);
       pointer-events: all;
     }
 
@@ -790,7 +791,7 @@
     .chat-tab-badge:empty { display: none; }
 
     #chat-messages {
-      height: 16.25rem; overflow-y: auto;
+      height: clamp(7rem, 26vh, 16.25rem); overflow-y: auto;
       background: var(--grain), linear-gradient(180deg, rgba(14, 26, 46, 0.82), rgba(9, 18, 33, 0.82));
       padding: 0.6rem 0.9rem;
       border-radius: 10px 10px 0 0;
@@ -869,6 +870,7 @@
     /* ── Controls hint: a stitched note ──────────────────────── */
     #controls-hint {
       position: absolute; bottom: 1rem; right: 1rem;
+      max-width: 44vw;
       color: rgba(240, 228, 196, 0.8); font-size: 0.7rem; text-align: right;
       line-height: 1.75; font-weight: 500;
       background: rgba(8, 16, 30, 0.6);
@@ -876,6 +878,8 @@
       border-radius: 12px;
       padding: 0.55rem 0.85rem;
     }
+    /* A very short window has no room for the tutorial card */
+    @media (max-height: 560px) { #controls-hint { display: none; } }
     #controls-hint b { color: #ffd975; font-weight: 600; }
 
     /* ── Player name labels ──────────────────────────────────── */
