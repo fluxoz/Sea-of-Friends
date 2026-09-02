@@ -102,7 +102,7 @@ export class AIFleet {
    */
   simStep(dt, players, wind, simTime, rng, onFire) {
     const events = []
-    const alivePlayers = players.filter(p => p.alive)
+    const alivePlayers = players.filter(p => p.alive && !p.docked)
     const islands = this.world.getIslands()
 
     for (const u of this.units) {
