@@ -14,7 +14,7 @@ import { waveHeight } from './world.js'
 import { dsin, dcos, dhypot } from './dmath.js'
 
 // ── Ballistics tuning ─────────────────────────────────────────────────────────
-export const BALL_SPEED      = 65     // muzzle velocity (world units / s)
+export const BALL_SPEED      = 74     // muzzle velocity (world units / s)
 export const BALL_GRAVITY    = 22
 export const BALL_DAMAGE     = 12     // per ball; a full 3-ball broadside ≈ 36
 export const RELOAD_TIME     = 3.0    // seconds per side
@@ -119,6 +119,11 @@ export class Combat {
     this._particles = []
     this._tex = getSoftTexture()
     this._spritePool = []
+    // Kenney particle-pack sprites (CC0): real smoke for trails, a flare
+    // for the hot-shot glow (render-only)
+    const tl = new THREE.TextureLoader()
+    this._smokeTex = tl.load('/assets/extra/particles/smoke_07.png')
+    this._flareTex = tl.load('/assets/extra/particles/flare_01.png')
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -231,7 +236,7 @@ export class Combat {
         x: b[0], y: b[1], z: b[2],
         px: b[0], py: b[1], pz: b[2],
         vx: b[3], vy: b[4], vz: b[5],
-        owner: ownerId, dmgMul, kind, ttl: BALL_TTL, mesh,
+        owner: ownerId, dmgMul, kind, ttl: BALL_TTL, mesh, skip: 0,
         home: -2,   // resolved on first sim step: island the muzzle sat inside
       })
       // Muzzle flash + smoke (render-only)
@@ -274,13 +279,31 @@ export class Combat {
       const distToListener = listenerPos
         ? Math.hypot(ball.x - listenerPos.x, ball.z - listenerPos.z) : 0
 
-      // Water splashdown
-      if (ball.y <= waveHeight(ball.x, ball.z, simTime)) {
-        this._splash(ball)
-        this.onWaterHit?.(ball.x, ball.z)
-        this.sfx.splash(distToListener)
-        this._removeBall(i)
-        continue
+      // Water: a fast ball arriving at a shallow angle skips like a stone
+      // (once) — flat low shots carry farther and can catch a hull on the
+      // bounce. Angle test is sqrt-free: |vy| < 0.22·|v_horizontal| ⇔
+      // vy² < 0.0484·(vx²+vz²), so it's exactly reproducible everywhere.
+      const w = waveHeight(ball.x, ball.z, simTime)
+      if (ball.y <= w) {
+        const h2 = ball.vx * ball.vx + ball.vz * ball.vz
+        if (!ball.skip && ball.vy < 0
+            && ball.vy * ball.vy < h2 * 0.0484 && h2 > 324) {
+          ball.skip = 1
+          ball.y = w + 0.02
+          ball.vy = -ball.vy * 0.55
+          ball.vx *= 0.82
+          ball.vz *= 0.82
+          this._burst(new THREE.Vector3(ball.x, w + 0.3, ball.z),
+            { count: 5, color: 0xd8ecf4, size: 1.7, speed: 5, life: 0.4 })
+          this.onWaterHit?.(ball.x, ball.z)
+          this.sfx.splash(distToListener)
+        } else {
+          this._splash(ball)
+          this.onWaterHit?.(ball.x, ball.z)
+          this.sfx.splash(distToListener)
+          this._removeBall(i)
+          continue
+        }
       }
 
       // Ship & fort hits — before terrain, so hillside forts are hittable
@@ -330,7 +353,8 @@ export class Combat {
   /** Snapshot the ball list (for late-join state transfer). */
   saveBalls() {
     return this._balls.map(b =>
-      [b.x, b.y, b.z, b.vx, b.vy, b.vz, b.owner, b.dmgMul, b.ttl, b.kind, b.home])
+      [b.x, b.y, b.z, b.vx, b.vy, b.vz, b.owner, b.dmgMul, b.ttl, b.kind, b.home,
+       b.skip ?? 0])
   }
 
   loadBalls(rows) {
@@ -344,7 +368,7 @@ export class Combat {
         x: r[0], y: r[1], z: r[2], px: r[0], py: r[1], pz: r[2],
         vx: r[3], vy: r[4], vz: r[5],
         owner: r[6], dmgMul: r[7], ttl: r[8], kind, mesh,
-        home: r[10] ?? -2,
+        home: r[10] ?? -2, skip: r[11] ?? 0,
       })
     }
   }
@@ -352,7 +376,7 @@ export class Combat {
   ballHash(acc) {
     acc.int(this._balls.length)
     for (const b of this._balls) {
-      acc.num(b.x).num(b.y).num(b.z).str(String(b.owner))
+      acc.num(b.x).num(b.y).num(b.z).str(String(b.owner)).int(b.skip ?? 0)
     }
   }
 
@@ -368,6 +392,28 @@ export class Combat {
       ball.mesh.position.set(mx, my, mz)
       if (ball.kind === 'bolt') {
         ball.mesh.lookAt(mx + ball.vx, my + ball.vy, mz + ball.vz)
+        continue
+      }
+
+      // Hot shot: white-orange out of the muzzle, cooling to iron over ~1.3 s
+      const heat = Math.max(0, 1 - (BALL_TTL - ball.ttl) / 1.3)
+      if (ball.mesh._glow) {
+        ball.mesh._glow.material.opacity = heat * heat * 0.9
+        const gs = 2.2 + heat * 2.2
+        ball.mesh._glow.scale.set(gs, gs, 1)
+        ball.mesh.material.color.setRGB(
+          0.12 + heat * 0.95, 0.12 + heat * 0.42, 0.12 + heat * 0.1)
+      }
+
+      // Smoke trail: small gray puffs shed along the arc (render-only)
+      ball._trailT = (ball._trailT ?? 0) - dtRender
+      if (ball._trailT <= 0) {
+        ball._trailT = 0.05
+        this._burst(new THREE.Vector3(mx, my, mz), {
+          count: 1, color: heat > 0.35 ? 0x9d9890 : 0x7c7871,
+          size: 1.0 + heat * 0.6, speed: 0.5, life: 0.55,
+          tex: this._smokeTex,
+        })
       }
     }
 
@@ -419,7 +465,21 @@ export class Combat {
   _takeBallMesh(kind) {
     const pool = this._meshPool ?? (this._meshPool = { ball: [], bolt: [] })
     return pool[kind]?.pop()
-      ?? (kind === 'bolt' ? makeBoltMesh() : new THREE.Mesh(_ballGeo, _ballMat))
+      ?? (kind === 'bolt' ? makeBoltMesh() : this._makeHotBall())
+  }
+
+  /** Round shot with its own material (heat tint) and an additive flare
+   *  glow child — fresh from the muzzle it reads white-hot, then cools. */
+  _makeHotBall() {
+    const m = new THREE.Mesh(_ballGeo, _ballMat.clone())
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: this._flareTex, color: 0xff9333, transparent: true,
+      blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0,
+    }))
+    glow.scale.set(3.2, 3.2, 1)
+    m.add(glow)
+    m._glow = glow
+    return m
   }
 
   _splash(ball) {
@@ -429,13 +489,14 @@ export class Combat {
     })
   }
 
-  _acquireSprite(color, additive) {
+  _acquireSprite(color, additive, tex) {
     let sprite = this._spritePool.pop()
     if (!sprite) {
       sprite = new THREE.Sprite(new THREE.SpriteMaterial({
         map: this._tex, transparent: true, depthWrite: false,
       }))
     }
+    sprite.material.map = tex ?? this._tex
     sprite.material.color.set(color)
     sprite.material.blending = additive ? THREE.AdditiveBlending : THREE.NormalBlending
     sprite.material.opacity  = 0.85
@@ -448,9 +509,9 @@ export class Combat {
     else sprite.material.dispose()
   }
 
-  _burst(pos, { count, color, size, speed, life, dir = null, additive = false, gravity = 0, flat = false }) {
+  _burst(pos, { count, color, size, speed, life, dir = null, additive = false, gravity = 0, flat = false, tex = null }) {
     for (let i = 0; i < count; i++) {
-      const sprite = this._acquireSprite(color, additive)
+      const sprite = this._acquireSprite(color, additive, tex)
       sprite.position.copy(pos)
       sprite.scale.set(size, size, 1)
 

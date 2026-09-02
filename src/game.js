@@ -1106,13 +1106,21 @@ export class Game {
     const time = this.world.getTime()
     const STEP = 0.055
     let count  = 0
+    let skipped = false
     for (let i = 0; i < AIM_DOTS; i++) {
       vy -= BALL_GRAVITY * STEP
       x += vx * STEP; y += vy * STEP; z += vz * STEP
       const w = waveHeight(x, z, time)
       this._aimPts[i].set(x, Math.max(y, w + 0.15), z)
       count++
-      if (y <= w) break
+      if (y <= w) {
+        // Preview the water-skip: same shallow-angle test the sim uses
+        const h2 = vx * vx + vz * vz
+        if (!skipped && vy < 0 && vy * vy < h2 * 0.0484 && h2 > 324) {
+          skipped = true
+          y = w + 0.02; vy = -vy * 0.55; vx *= 0.82; vz *= 0.82
+        } else break
+      }
     }
     if (count >= 2) {
       const curve = new THREE.CatmullRomCurve3(this._aimPts.slice(0, count))
