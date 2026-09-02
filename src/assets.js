@@ -45,6 +45,20 @@ export const ASSET_MANIFEST = [
   ['barrel',                  '/assets/kenney-pirate/barrel.glb'],
   ['chest',                   '/assets/kenney-pirate/chest.glb'],
   ['cannon',                  '/assets/kenney-pirate/cannon.glb'],
+  ['tower-large',             '/assets/kenney-pirate/tower-complete-large.glb'],
+  ['tower-small',             '/assets/kenney-pirate/tower-complete-small.glb'],
+  ['dock',                    '/assets/kenney-pirate/structure-platform-dock.glb'],
+  ['dock-small',              '/assets/kenney-pirate/structure-platform-dock-small.glb'],
+  ['flag-high',               '/assets/kenney-pirate/flag-pirate-high.glb'],
+  ['grass-patch',             '/assets/kenney-pirate/grass-patch.glb'],
+  ['patch-grass',             '/assets/kenney-pirate/patch-grass-foliage.glb'],
+  ['patch-sand',              '/assets/kenney-pirate/patch-sand-foliage.glb'],
+  ['boat-row',                '/assets/kenney-pirate/boat-row-large.glb'],
+
+  // ── Kenney Fantasy Town Kit (harbor market) ───────────────────────────────
+  ['stall-a',                 '/assets/kenney-town/stall.glb'],
+  ['stall-b',                 '/assets/kenney-town/stall-red.glb'],
+  ['stall-c',                 '/assets/kenney-town/stall-green.glb'],
 
   // ── Kenney Watercraft Kit ─────────────────────────────────────────────────
   ['buoy',                    '/assets/kenney-watercraft/buoy.glb'],

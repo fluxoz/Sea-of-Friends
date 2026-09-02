@@ -1022,7 +1022,7 @@ export class World {
    * overhangs), seated at the lowest corner so nothing floats.
    * @returns the placed object (already added to group) or null
    */
-  _placeBuilding(group, x, z, radius, heightAt, rng, key, half, tries, accept = null) {
+  _placeBuilding(group, x, z, radius, heightAt, rng, key, half, tries, accept = null, scale = 1) {
     for (let i = 0; i < tries; i++) {
       const a = rng() * Math.PI * 2
       const d = (0.15 + rng() * 0.7) * radius
@@ -1045,6 +1045,7 @@ export class World {
       if (accept && !accept(hC, d / radius)) continue
 
       const obj = cloneAsset(key)
+      if (scale !== 1) obj.scale.setScalar(scale)
       obj.position.set(cx - x, minH - 0.15, cz - z)
       obj.rotation.y = yaw
       group.add(obj)
@@ -1078,6 +1079,28 @@ export class World {
     this._scatterShoreRocks(group, x, z, radius, heightAt, 2 + Math.floor(rng() * 4), rng)
     this._scatterCargo(group, x, z, radius, heightAt, Math.floor(rng() * 3), rng)
 
+    // Ground cover: grassy and sandy foliage patches soften the bare facets
+    for (let i = 0; i < 5 + Math.floor(rng() * 5); i++) {
+      const key = ['grass-patch', 'patch-grass', 'patch-sand'][(rng() * 3) | 0]
+      if (!hasAsset(key)) continue
+      const spot = this._findSpot(x, z, radius, heightAt, rng, 6, h => h > 3.2)
+      if (spot) {
+        const p = cloneAsset(key)
+        p.scale.setScalar(2.6 + rng() * 1.4)
+        p.position.set(spot.x - x, spot.h - 0.15, spot.z - z)
+        p.rotation.y = rng() * Math.PI * 2
+        group.add(p)
+      }
+    }
+
+    // A lonely watchtower crowns some isles — a landmark you can navigate by
+    if (radius > 26 && rng() < 0.35 && hasAsset('tower-small')) {
+      const big = rng() < 0.4
+      this._placeBuilding(group, x, z, radius, heightAt, rng,
+        big ? 'tower-large' : 'tower-small', 4, 14,
+        h => h > height * 0.35, big ? 1.8 : 2.1)
+    }
+
     // Some larger isles are settled: a farmhouse (or a rare pirate camp),
     // a well, a windmill on the hill, and a beached boat
     if (radius > 34 && rng() < 0.4 && hasAsset('x-farmhouse')) {
@@ -1102,6 +1125,47 @@ export class World {
           boat.rotation.y = rng() * Math.PI * 2
           boat.rotation.z = 0.12
           group.add(boat)
+        }
+        // A working harbor: plank dock reaching into the shallows, the
+        // colours flying over the quay, a stall or two of market goods
+        if (hasAsset('dock')) {
+          // Aim the dock at the lowest stretch of shoreline — a random angle
+          // can bury it in a hillside on irregular isles
+          const da0 = rng() * Math.PI * 2
+          let da = da0, best = Infinity
+          for (let i = 0; i < 12; i++) {
+            const a2 = da0 + (i / 12) * Math.PI * 2
+            const h2 = heightAt(x + dcos(a2) * radius * 0.85, z + dsin(a2) * radius * 0.85)
+          if (h2 < best) { best = h2; da = a2 }
+          }
+          const dock = cloneAsset('dock')
+          dock.scale.setScalar(3.2)
+          dock.position.set(dcos(da) * radius, 0.6, dsin(da) * radius)
+          dock.rotation.y = Math.PI / 2 - da
+          group.add(dock)
+          if (hasAsset('boat-row')) {
+            const rb = cloneAsset('boat-row')
+            rb.scale.setScalar(2.2)
+            const ba2 = da + 0.3
+            rb.position.set(dcos(ba2) * radius * 1.1, 0.4, dsin(ba2) * radius * 1.1)
+            rb.rotation.y = rng() * Math.PI * 2
+            rb.rotation.z = 0.08
+            group.add(rb)
+          }
+          if (hasAsset('flag-high')) {
+            const fl = cloneAsset('flag-high')
+            fl.scale.setScalar(3.0)
+            const fx2 = dcos(da) * radius * 0.82, fz2 = dsin(da) * radius * 0.82
+            fl.position.set(fx2, Math.max(1.5, heightAt(x + fx2, z + fz2) - 0.1), fz2)
+            group.add(fl)
+          }
+          for (let s = 0; s < 2; s++) {
+            if (rng() < 0.7 && hasAsset('stall-a')) {
+              this._placeBuilding(group, x, z, radius, heightAt, rng,
+                ['stall-a', 'stall-b', 'stall-c'][(rng() * 3) | 0], 3.5, 10,
+                (h, r) => r > 0.5, 6)
+            }
+          }
         }
       }
     }
