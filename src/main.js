@@ -250,6 +250,11 @@ async function init() {
   }
   nameInput.focus()
   watchForNewVersion()
+  const stamp = document.getElementById('ver-stamp')
+  if (stamp) {
+    const b = typeof __BUILT_AT__ !== 'undefined' ? __BUILT_AT__ : ''
+    stamp.textContent = `v${APP_VERSION}${b ? ' · ' + b.slice(5, 16).replace('T', ' ') : ''}`
+  }
   // Warm the TURN credentials while the captain reads the menu, so joining
   // never waits on it; STUN-only if it fails (local dev, offline)
   fetchTurnServers()
@@ -612,6 +617,17 @@ function startGame(playerName) {
   const color = Math.random() * 0xffffff | 0
 
   network = new NetworkManager(roomId)
+  // A crewmate in this room is on a DIFFERENT protocol version — the swarms
+  // can't meet, so tell the captain who has to refresh (once per version)
+  const _versionWarned = new Set()
+  network.onVersionMismatch = v => {
+    if (_versionWarned.has(v)) return
+    _versionWarned.add(v)
+    const theirsNewer = v > APP_VERSION
+    addSystemMessage(theirsNewer
+      ? `⚠ A sailor with this room code is on v${v} — YOU are on v${APP_VERSION}. Refresh to sail together!`
+      : `⚠ A sailor with this room code is on v${v} (you're on v${APP_VERSION}) — tell 'em to refresh, then share the code again`)
+  }
 
   // ── Proximity audio ──────────────────────────────────────────────────────
   audio = new ProximityAudio()

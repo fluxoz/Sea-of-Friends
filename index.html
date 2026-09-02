@@ -452,6 +452,15 @@
       font-family: var(--font-flavor); font-style: italic;
       text-shadow: 0 1px 4px rgba(0,0,0,0.9);
     }
+    /* Build stamp: crews must match versions to share a sea — make it
+       comparable at a glance */
+    #ver-stamp {
+      position: fixed; bottom: 0.6rem; right: 0.9rem;
+      font-size: 0.68rem; color: rgba(232, 201, 126, 0.55);
+      font-family: var(--font-body); font-weight: 500;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+      letter-spacing: 0.04em;
+    }
 
     /* ── Mobile landing ──────────────────────────────────────── */
     #mobile-landing {
@@ -1168,6 +1177,7 @@
     <button id="public-seas-btn" class="btn3d btn-blue">🌐 Public seas — find a crew</button>
     <input type="file" id="replay-file" accept=".json,application/json" style="display:none" />
     <div id="join-hint">Same room code = same sea. The first captain in charts the world.</div>
+    <div id="ver-stamp"></div>
     <div id="public-seas-panel" class="panel nails">
       <button id="public-seas-close" title="Close">✕</button>
       <h3 class="ribbon">Seas Taking Crew</h3>
