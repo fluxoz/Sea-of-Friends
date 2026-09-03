@@ -265,13 +265,19 @@ async function init() {
     addSystemMessage(`⚓ Invited to sea "${roomInput.value}" — name yerself and set sail`)
   }
   nameInput.focus()
+  // A refresh mid-voyage drops straight back into the sea — the menu is
+  // only for fresh voyages and deliberate quits
   let autoResumed = false
   try {
-    if (sessionStorage.getItem('sof-resume') === '1' && lastVoyage?.name && lastVoyage?.room) {
-      sessionStorage.removeItem('sof-resume')
+    const banner = sessionStorage.getItem('sof-resume') === '1'
+    sessionStorage.removeItem('sof-resume')
+    if ((banner || lastVoyage?.active) && lastVoyage?.name && lastVoyage?.room) {
       autoResumed = true
-      addSystemMessage('⚓ Fresh build taken aboard — returning to yer sea…')
-      setTimeout(() => joinBtn.click(), 300)
+      nameScreen.style.display = 'none'
+      addSystemMessage(banner
+        ? '⚓ Fresh build taken aboard — returning to yer sea…'
+        : '⚓ Back aboard — returning to yer sea…')
+      joinBtn.click()
     }
   } catch {}
   if (!autoResumed) nameInput.focus()
@@ -661,7 +667,7 @@ function startGame(playerName) {
     }
     localStorage.setItem('sof-last', JSON.stringify({
       room: roomId, name: playerName, cls: shipClass,
-      pid: network.selfId, at: Date.now(),
+      pid: network.selfId, at: Date.now(), active: true,
     }))
   } catch { /* storage unavailable — resume is a convenience */ }
 
@@ -1166,10 +1172,16 @@ function quitToMenu() {
   nameScreen.style.display = 'flex'
   joinBtn.disabled = false
   quitBtn.classList.remove('armed')
-  quitBtn.textContent = '⏏'
+  quitBtn.innerHTML = quitIconHtml
   nameInput.focus()
+  // A deliberate quit ends the voyage — refresh goes to the menu again
+  try {
+    const last = JSON.parse(localStorage.getItem('sof-last') ?? 'null')
+    if (last) { last.active = false; localStorage.setItem('sof-last', JSON.stringify(last)) }
+  } catch {}
 }
 
+const quitIconHtml = quitBtn?.innerHTML
 quitBtn?.addEventListener('click', e => {
   e.stopPropagation()
   if (!network) return
@@ -1180,7 +1192,7 @@ quitBtn?.addEventListener('click', e => {
     clearTimeout(quitArmTimer)
     quitArmTimer = setTimeout(() => {
       quitBtn.classList.remove('armed')
-      quitBtn.textContent = '⏏'
+      quitBtn.innerHTML = quitIconHtml
     }, 3000)
     return
   }
