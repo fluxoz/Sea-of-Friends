@@ -672,6 +672,7 @@ export class Sim {
         if (p.upCannon >= 2 || p.gold < cost) return
         p.upCannon++
         s.sideGuns += 1
+        s.refreshCannons?.()
         this.hooks.feed(`🧨 ${name} ran out an extra gun per broadside!`)
         break
       case 'sails':
@@ -710,7 +711,7 @@ export class Sim {
     if (owned.length) {
       const lost = owned[this.rng.int(owned.length)]
       if (lost === 'plank') { p.upPlank--; p.ship.maxHp -= 25 }
-      else if (lost === 'cannon') { p.upCannon--; p.ship.sideGuns -= 1 }
+      else if (lost === 'cannon') { p.upCannon--; p.ship.sideGuns -= 1; p.ship.refreshCannons?.() }
       else { p.upSails = 0; p.ship.speedMul /= 1.12 }
       const label = { plank: 'oak planking', cannon: 'extra cannons', sails: 'silk sails' }[lost]
       this.hooks.feed(`🌊 ${this.hooks.resolveName(p.id)}'s ${label} went down with the ship`)
@@ -883,7 +884,10 @@ export class Sim {
       p.dockPort = row.dp ?? -1
       p.upPlank = row.u1 ?? 0; p.upCannon = row.u2 ?? 0; p.upSails = row.u3 ?? 0
       p.kegShots = row.kg ?? 0
-      if (row.mh !== undefined) { s.maxHp = row.mh; s.sideGuns = row.sgn; s.speedMul = row.smu }
+      if (row.mh !== undefined) {
+        s.maxHp = row.mh; s.speedMul = row.smu
+        if (s.sideGuns !== row.sgn) { s.sideGuns = row.sgn; s.refreshCannons?.() }
+      }
     }
   }
 
