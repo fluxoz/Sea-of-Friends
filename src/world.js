@@ -185,6 +185,8 @@ const OCEAN_FRAG = /* glsl */ `
   // fragment, so this is the single hottest path in the frame. The mips
   // also calm far-field shimmer that the procedural version aliased.
   uniform sampler2D uNoise;
+  uniform sampler2D uShallowMap;
+  uniform float uWorldSize;
   float vnoise(vec2 p) {
     return texture2D(uNoise, p * (1.0 / 64.0)).r;
   }
@@ -243,6 +245,15 @@ const OCEAN_FRAG = /* glsl */ `
                 + 0.5 * vnoise(vWorldPos.xz * 0.17 - uTime * 0.08);
     float foam = smoothstep(2.1, 3.6, vH + (foamN - 0.75) * 0.9);
     col = mix(col, vec3(0.92, 0.96, 1.0), foam * 0.6);
+
+    // Shallows: turquoise water over the sand shelf around every island,
+    // with a band of animated foam lapping the shoreline
+    vec2 shuv = vWorldPos.xz / uWorldSize + 0.5;
+    float shal = texture2D(uShallowMap, clamp(shuv, 0.0, 1.0)).r;
+    col = mix(col, vec3(0.16, 0.65, 0.62), smoothstep(0.15, 0.85, shal) * 0.42);
+    float shore = smoothstep(0.55, 0.72, shal)
+                * (0.35 + 0.65 * vnoise(vWorldPos.xz * 0.14 + vec2(uTime * 0.25, -uTime * 0.2)));
+    col = mix(col, vec3(0.93, 0.97, 0.98), shore * 0.5);
 
     // Wake foam: churned water stamped by ships and splashes into a
     // world-space trail texture that follows the camera
@@ -500,8 +511,11 @@ export class World {
         uDynCenter:   { value: new THREE.Vector2(0, 0) },
         uDynSize:     { value: 360 },
         uNoise:       { value: this._makeNoiseTexture() },
+        uShallowMap:  { value: null },
+        uWorldSize:   { value: WORLD_SIZE },
       },
     })
+    if (this._shallowTex) this._oceanMat.uniforms.uShallowMap.value = this._shallowTex
 
     this._oceanMat  = mat
     this._oceanMesh = new THREE.Mesh(geo, mat)
@@ -874,9 +888,65 @@ export class World {
         case 'reef':    this._buildReef(x, z, a.r, rng);    break
         default:        this._buildIsle(x, z, a.r, rng)
       }
+
+      // Island chains: many isles trail a drifting line of islets and
+      // reefs — archipelagos to thread a ship through, not lone rocks
+      if (a.kind === 'isle' && rng() < 0.45) {
+        let ca = rng() * Math.PI * 2
+        let cx = x, cz = z, pr = a.r
+        const links = 1 + ((rng() * 2.4) | 0)
+        for (let k = 0; k < links && placed.length < ISLAND_COUNT; k++) {
+          const cr = 14 + rng() * 22
+          const gap = pr + cr + 60 + rng() * 60
+          ca += (rng() - 0.5) * 0.9
+          cx += dcos(ca) * gap
+          cz += dsin(ca) * gap
+          if (Math.abs(cx) > WORLD_SIZE * 0.47 || Math.abs(cz) > WORLD_SIZE * 0.47) break
+          if (dhypot(cx, cz) < 350 + cr) break
+          if (placed.some(p => dhypot(cx - p.x, cz - p.z) < p.r + cr + 90)) break
+          placed.push({ x: cx, z: cz, r: cr, kind: 'chain' })
+          if (rng() < 0.3) this._buildReef(cx, cz, cr, rng)
+          else this._buildIsle(cx, cz, cr, rng)
+          pr = cr
+        }
+      }
     }
 
     this._buildAmbientDecor(rng)
+    this._bakeShallows()
+  }
+
+  /**
+   * Bake a world-space shallow-water field (one texel ≈ 12 units): the ocean
+   * shader tints these turquoise and laps animated foam at the shore line.
+   * Static per world — built once from the island list, render-only.
+   */
+  _bakeShallows() {
+    const N = 512
+    const data = new Uint8Array(N * N * 4)
+    const toWorld = t => (t / N - 0.5) * WORLD_SIZE
+    const toTex = w => Math.round((w / WORLD_SIZE + 0.5) * N)
+    for (const isl of this._islands) {
+      const reach = isl.r * 1.6
+      const t0x = Math.max(0, toTex(isl.x - reach)), t1x = Math.min(N - 1, toTex(isl.x + reach))
+      const t0z = Math.max(0, toTex(isl.z - reach)), t1z = Math.min(N - 1, toTex(isl.z + reach))
+      for (let tz = t0z; tz <= t1z; tz++) {
+        for (let tx = t0x; tx <= t1x; tx++) {
+          const d = Math.hypot(toWorld(tx) - isl.x, toWorld(tz) - isl.z)
+          const s = Math.max(0, Math.min(1, 1 - d / reach))
+          const o = (tz * N + tx) * 4
+          const v = Math.round(s * 255)
+          if (v > data[o]) { data[o] = v; data[o + 1] = v; data[o + 2] = v; data[o + 3] = 255 }
+        }
+      }
+    }
+    const tex = new THREE.DataTexture(data, N, N)
+    tex.minFilter = THREE.LinearFilter
+    tex.magFilter = THREE.LinearFilter
+    tex.needsUpdate = true
+    this._shallowTex?.dispose()
+    this._shallowTex = tex
+    if (this._oceanMat) this._oceanMat.uniforms.uShallowMap.value = tex
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -896,6 +966,21 @@ export class World {
   _buildTerrain(x, z, radius, height, kind, rng) {
     const seed = (rng() * 0xffffffff) >>> 0
     const gapA = rng() * Math.PI * 2          // atoll lagoon entrance
+    // Lobes: secondary cones fused onto larger isles for irregular, bay-cut
+    // coastlines instead of round pancakes (kept inside the mesh extent)
+    const lobes = []
+    if (kind === 'isle' && radius > 30 && rng() < 0.55) {
+      const n = 1 + (rng() < 0.35 ? 1 : 0)
+      for (let i = 0; i < n; i++) {
+        const la = rng() * Math.PI * 2
+        const ld = radius * (0.35 + rng() * 0.2)
+        lobes.push({
+          cx: x + dcos(la) * ld, cz: z + dsin(la) * ld,
+          r: radius * (0.3 + rng() * 0.18),
+          h: height * (0.35 + rng() * 0.4),
+        })
+      }
+    }
 
     const heightAt = (wx, wz) => {
       const lx = wx - x, lz = wz - z
@@ -924,10 +1009,18 @@ export class World {
         while (da < -Math.PI) da += Math.PI * 2
         h -= Math.max(0, 1 - Math.abs(da) / 0.5) * 8
       } else {
-        // isle: rolling hills under a soft cone
+        // isle: rolling hills under a soft cone, fused with any lobes
         const core = Math.max(0, 1 - r / 1.05)
         h = height * Math.pow(core, 1.35)
         h += (n - 0.5) * height * 0.5 * Math.max(0, 1 - r * 0.9)
+        for (const L of lobes) {
+          const lr = dhypot(wx - L.cx, wz - L.cz) / L.r
+          if (lr < 1.15) {
+            const lh = L.h * Math.pow(Math.max(0, 1 - lr / 1.1), 1.3)
+              + (n - 0.5) * L.h * 0.4 * Math.max(0, 1 - lr)
+            if (lh > h) h = lh
+          }
+        }
         h = Math.max(h, (1.6 - r * 1.5) * 2)   // keep the middle above water
       }
 
