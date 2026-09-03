@@ -130,8 +130,13 @@
       line-height: 1;
     }
     /* The bottom bevel (inset shadow) visually eats ~3px of the face, so a
-       geometrically centered glyph reads LOW — lift it half that */
+       geometrically centered glyph reads LOW — lift it half that. The gear
+       and eject glyphs carry extra bottom bearing in their own metrics and
+       need individual correction. */
     #hud-top-right .btn-icon { padding-bottom: 3px; }
+    #settings-btn { font-size: 1.32rem; }
+    #settings-btn, #quit-btn { padding-bottom: 5px; }
+    #quit-btn { font-size: 1.22rem; }
 
     /* ── Parchment plaques (readouts) ─────────────────────────── */
     .plaque {
@@ -525,7 +530,7 @@
 
     /* ── Crew list ───────────────────────────────────────────── */
     #latency-list {
-      position: absolute; top: 4rem; right: 1rem;
+      position: absolute; top: 4.45rem; right: 1rem;
       min-width: 10.75rem;
       overflow: hidden;
       display: none;
@@ -1338,7 +1343,7 @@
 
   <div id="map-overlay">
     <div id="map-title">⚓ Chart of the Sea</div>
-    <div id="map-frame" class="nails"><canvas id="map-canvas" width="620" height="620"></canvas></div>
+    <div id="map-frame" class="nails"><canvas id="map-canvas" width="1240" height="1240"></canvas></div>
     <div id="map-legend">
       <span>▲ You (gold)</span><span>▲ Enemy captains</span><span>▲ Ghost ships (green)</span>
       <span>● Power-ups</span><span>■ Fort (hollow = cracked)</span><span>⛰ Volcano</span><span>◌ Atoll</span><span>M / ESC – close</span>
