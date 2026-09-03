@@ -124,8 +124,14 @@
     .btn-sm:active { transform: translateY(2px);
       box-shadow: 0 1px 0 var(--b-ext), 0 1px 0 2px var(--edge-dark), 0 2px 5px rgba(0,0,0,0.35),
         inset 0 2px 0 rgba(255,255,255,0.2), inset 0 -2px 0 rgba(0,0,0,0.16); }
-    .btn-icon { width: 2.55rem; height: 2.55rem; padding: 0; font-size: 1.15rem;
-      display: grid; place-items: center; border-radius: 12px; }
+    .btn-icon {
+      width: 2.55rem; height: 2.55rem; padding: 0; font-size: 1.15rem;
+      display: grid; place-items: center; border-radius: 12px;
+      line-height: 1;
+    }
+    /* The bottom bevel (inset shadow) visually eats ~3px of the face, so a
+       geometrically centered glyph reads LOW — lift it half that */
+    #hud-top-right .btn-icon { padding-bottom: 3px; }
 
     /* ── Parchment plaques (readouts) ─────────────────────────── */
     .plaque {
@@ -501,12 +507,19 @@
 
     #hud-top-right {
       position: absolute; top: 1rem; right: 1rem;
-      display: flex; align-items: center; gap: 0.55rem;
+      display: flex; align-items: stretch; gap: 0.6rem;
       pointer-events: all;
+    }
+    /* Uniform height for every chip and button in the row — mixed padding
+       heights made the gaps read unevenly */
+    #hud-top-right > * {
+      height: 2.55rem;
+      display: inline-flex; align-items: center; justify-content: center;
+      box-sizing: border-box;
     }
 
     #peer-count {
-      padding: 0.45rem 1rem; font-size: 0.85rem;
+      padding: 0 1rem; font-size: 0.85rem;
       white-space: nowrap; letter-spacing: 0.04em;
     }
 
@@ -655,7 +668,7 @@
 
     /* ── Gold ────────────────────────────────────────────────── */
     #gold-count {
-      padding: 0.45rem 1rem; font-size: 0.95rem;
+      padding: 0 1rem; font-size: 0.95rem;
       white-space: nowrap;
     }
 
