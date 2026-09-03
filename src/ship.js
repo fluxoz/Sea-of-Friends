@@ -35,7 +35,7 @@ export const SHIP_CLASSES = {
     sailTint: null,
   },
   frigate: {
-    label: 'Frigate', modelKey: 'ship-pirate-large', scale: 1.2,
+    label: 'Frigate', modelKey: 'ship-pirate-medium', scale: 1.35,
     maxHp: 100, speedMul: 1.0, turnMul: 1.0, sideGuns: 3, bowGuns: 2,
     sailTint: null,
   },
@@ -255,7 +255,15 @@ export class Ship {
   /** Mount visible deck cannons: broadside batteries + bow chasers. */
   _mountCannons() {
     if (!hasAsset('cannon')) return
-    const stationTable = { 1: [0], 3: [-0.54, -0.05, 0.43], 5: [-0.6, -0.33, -0.05, 0.22, 0.46] }
+    const stationTable = {
+      1: [0],
+      2: [-0.32, 0.26],
+      3: [-0.54, -0.05, 0.43],
+      4: [-0.56, -0.2, 0.14, 0.46],
+      5: [-0.6, -0.33, -0.05, 0.22, 0.46],
+      6: [-0.62, -0.38, -0.13, 0.1, 0.32, 0.5],
+      7: [-0.64, -0.42, -0.2, 0.02, 0.22, 0.4, 0.55],
+    }
     const stations = (stationTable[this.sideGuns] ?? stationTable[3])
       .map(a => a * this.halfLength)
     const scale = this.halfLength * 0.16
@@ -290,6 +298,16 @@ export class Ship {
       this.group.add(cannon)
       this._cannons.bow.push(cannon)
     }
+  }
+
+  /** Re-mount the deck guns after the broadside count changes (port
+   *  purchases, upgrades lost with a sinking). */
+  refreshCannons() {
+    for (const key of [1, -1, 'bow']) {
+      for (const c of this._cannons[key] ?? []) this.group.remove(c)
+      this._cannons[key] = []
+    }
+    this._mountCannons()
   }
 
   /** World-space muzzle of a battery's middle gun (anchors the aim arc).
