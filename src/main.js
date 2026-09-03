@@ -121,6 +121,13 @@ const COMMANDS = [
   { cmd: '/replay', args: '',         desc: 'Download this session as a watchable replay' },
 ]
 
+/** Room codes are the password to a sea — make them forgiving: case,
+ *  padding, and spacing differences must never strand friends in
+ *  parallel swarms. */
+function normalizeRoom(code) {
+  return (code ?? '').trim().toLowerCase().replace(/\s+/g, '-').slice(0, 32)
+}
+
 // ── Room links: ?room=X prefills the code (and names the sea on mobile) ──────
 const ROOM_PARAM = new URLSearchParams(location.search).get('room')
 
@@ -261,7 +268,7 @@ async function init() {
     }
   }
   if (ROOM_PARAM) {
-    roomInput.value = ROOM_PARAM.slice(0, 32)
+    roomInput.value = normalizeRoom(ROOM_PARAM)
     addSystemMessage(`⚓ Invited to sea "${roomInput.value}" — name yerself and set sail`)
   }
   nameInput.focus()
@@ -645,7 +652,7 @@ function burnMenu(done) {
 
 // ── Join ──────────────────────────────────────────────────────────────────────
 function startGame(playerName) {
-  const roomId = roomInput.value.trim() || DEFAULT_ROOM_CODE
+  const roomId = normalizeRoom(roomInput.value) || DEFAULT_ROOM_CODE
   const shipClass = document.querySelector('.ship-card.selected')?.dataset.cls || 'frigate'
 
   // The scroll burns away while the game boots underneath it
